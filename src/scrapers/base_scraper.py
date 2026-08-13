@@ -1,29 +1,31 @@
 """
 Clase base para todos los scrapers de portal.
 
-Por qué existe esta capa (spec, "Criterio de Diseño" y "Manejo de Excepciones"):
-- Modularidad: cada sitio hereda de aquí. Si Sitio 2 cambia su HTML y explota,
-  el orquestador (main.py) debe poder capturar esa excepción SIN que tumbe
-  la ejecución de Sitio 1 para el resto de clientes.
-- Comportamiento humano: delays dinámicos y fingerprint del navegador van aquí,
-  una sola vez, para que ningún scraper individual "se olvide" de aplicarlos.
-- Reintentos: los portales gubernamentales son inestables (spec lo advierte
-  explícitamente), así que el retry con backoff vive en la base, no se repite
-  copiado en cada sitio.
+Por qué existe esta capa:
+- Modularidad: cada sitio hereda de aquí. Si un sitio cambia su HTML y
+  explota, el orquestador debe poder capturar esa excepción SIN que
+  tumbe la ejecución de los demás sitios para el resto de clientes.
+- Comportamiento humano: delays dinámicos van aquí, una sola vez, para
+  que ningún scraper individual "se olvide" de aplicarlos.
+- Reintentos: los portales gubernamentales son inestables, así que el
+  retry con backoff vive en la base, no se repite copiado en cada sitio.
 """
 import random
-from sys import exception
 import time
 from abc import ABC, abstractmethod
-from playwright.sync_api import BrowserContext, Page, sync_playwright
-from pytest_playwright.pytest_playwright import browser_name
-from src.core.models import Cliente, ProcesoJudicial, ResultadoConsulta
+from typing import Any
+
+from playwright.sync_api import BrowserContext, Page
+
+from src.core.models import Cliente, ResultadoConsulta
+
 
 class ScraperError(Exception):
     """Error específico de scraping, distinto de un error de programación."""
     def __init__(self, mensaje: str, resultado: ResultadoConsulta):
         super().__init__(mensaje)
         self.resultado = resultado
+
 
 class BaseScraper(ABC):
     nombre_sitio: str = "sin_nombre"      # cada subclase lo sobreescribe
@@ -58,8 +60,14 @@ class BaseScraper(ABC):
         )
 
     @abstractmethod
-    def buscar_cliente(self, page: Page, cliente: Cliente) -> list[ProcesoJudicial]:
-        """Cada sitio implementa su propia lógica de búsqueda y extracción."""
+    def buscar_cliente(self, page: Page, cliente: Cliente) -> Any:
+        """
+        Cada sitio implementa su propia lógica de búsqueda y extracción.
+        El tipo de retorno es genérico (Any) a propósito: cada sitio
+        devuelve una estructura de datos distinta (dict de datos de RUC,
+        lista de procesos, etc.) - no hay un tipo único común entre los
+        8 sitios de este proyecto.
+        """
         raise NotImplementedError
 
     @abstractmethod

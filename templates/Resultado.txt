@@ -1,0 +1,119 @@
+<div _ngcontent-c10="" class="col-sm-6">
+  <div
+    _ngcontent-c10=""
+    class="row espaciado-contenido-carta card card-w-title"
+  >
+    <div _ngcontent-c10="" class="col-sm-12">
+      <div _ngcontent-c10="" class="d-flex justify-content-center">
+        <div _ngcontent-c10="" style="width: 100%">
+          <!---->
+          <h3
+            _ngcontent-c10=""
+            class="titulo-formulario-principal ng-star-inserted"
+          >
+            Consultar información del contribuyente
+          </h3>
+          <!----><p-messages _ngcontent-c10="" class="animated fadeInUp"
+            ><!----></p-messages
+          ><!---->
+          <div _ngcontent-c10="" class="animated fadeInUp ng-star-inserted">
+            <sri-campo-ruc _ngcontent-c10="" _nghost-c11=""
+              ><form
+                _ngcontent-c11=""
+                novalidate=""
+                class="ng-pristine ng-invalid ng-touched"
+              >
+                <div _ngcontent-c11="" class="grupo-formulario">
+                  <div _ngcontent-c11="" class="ui-g-12">
+                    <label
+                      _ngcontent-c11=""
+                      class="titulo-campo"
+                      for="busquedaRucId"
+                      >RUC</label
+                    >
+                  </div>
+                  <div _ngcontent-c11="" class="ui-g-12">
+                    <input
+                      _ngcontent-c11=""
+                      autocomplete="on"
+                      class="sri-input-bloque ng-pristine ng-invalid ui-inputtext ui-corner-all ui-state-default ui-widget ng-touched"
+                      formcontrolname="inputRuc"
+                      id="busquedaRucId"
+                      maxlength="13"
+                      name="inputRuc"
+                      pinputtext=""
+                      placeholder="1700000000001"
+                      required=""
+                      title="Número del Registro Único de Contribuyente"
+                      type="text"
+                    />
+                  </div>
+                  <div _ngcontent-c11="" class="ui-g-12">
+                    <p-messages _ngcontent-c11="" class="animated fadeInUp"
+                      ><!----></p-messages
+                    >
+                  </div>
+                </div>
+              </form></sri-campo-ruc
+            >
+          </div>
+          <!---->
+        </div>
+      </div>
+    </div>
+    <div _ngcontent-c10="" class="col-sm-12">
+      <div _ngcontent-c10="" class="d-flex justify-content-center">
+        <button
+          _ngcontent-c10=""
+          pbutton=""
+          class="ui-button-secondary ui-button ui-widget ui-state-default ui-corner-all ui-button-text-only"
+          disabled=""
+        >
+          <span class="ui-button-text ui-clickable">Consultar</span>
+        </button>
+      </div>
+    </div>
+    <div _ngcontent-c10="" class="espaciado-contenido"></div>
+    <div _ngcontent-c10="" class="col-sm-12">
+      <sri-guia-uso _ngcontent-c10="" role="button" _nghost-c13=""
+        ><a
+          _ngcontent-c13=""
+          aria-label="Guía para contribuyentes"
+          class="d-flex justify-content-center guia guia-espaciado"
+          role="link"
+          target="_blank"
+          href="https://www.sri.gob.ec/DocumentosAlfrescoPortlet/descargar/f48819f5-be9c-41d7-b9fc-9a956b44fb8b/GUIA%20CONTRIBUYENTE%20-%20Consulta%20de%20RUC.pdf"
+          ><div
+            _ngcontent-c13=""
+            aria-labelledby="Información"
+            class="row contenedor-guia-uso"
+            role="region"
+          >
+            <div
+              _ngcontent-c13=""
+              class="col-sm-3 sri-mensaje-icono-quitar-padding"
+            >
+              <img
+                _ngcontent-c13=""
+                alt="Guía para contribuyentes"
+                class="tamano-guia-usuario"
+                src="/recursos-sri-en-linea/imagenes/descargar-guia/icono-descargar-guia.svg"
+              />
+            </div>
+            <div
+              _ngcontent-c13=""
+              class="col-sm-9 sri-mensaje-icono-quitar-padding"
+            >
+              <p
+                _ngcontent-c13=""
+                class="text-center letras-guia-contribuyente"
+              >
+                Guía para contribuyentes
+              </p>
+            </div>
+          </div></a
+        ></sri-guia-uso
+      >
+    </div>
+  </div>
+</div>

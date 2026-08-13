@@ -1,6 +1,4 @@
 """
-src/core/graph_uploader.py
-
 Sube archivos (PDFs, evidencia) a OneDrive vía Graph API, replicando la
 misma estructura de carpetas que ya existe en local
 (DebidaDiligencia/Año/Mes/Identificacion/archivo). El guardado local
@@ -9,7 +7,6 @@ no un reemplazo.
 """
 import os
 import requests
-
 
 class GraphUploader:
     def __init__(self, cuenta_onedrive: str, writer, carpeta_base: str = "COMPARTIDO/LEGAL"):
