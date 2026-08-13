@@ -160,10 +160,17 @@ class ScraperFuncionJudicial(BaseScraper):
         """
         from src.procesamiento.limite_volumen import aplicar_limite_volumen, separar_por_materia
 
+        # "No. de Juicios" = TOTAL BRUTO de procesos encontrados, SIN
+        # filtrar (confirmado con datos reales: Diego=4, INDUAUTO=107).
+        # El límite de 3 procesos SÍ aplica el filtro de materias (lista
+        # oficial de 282 exclusiones, confirmada en reunión del 29/07) -
+        # el ejemplo del Excel que mostraba "Despido Intempestivo" incluido
+        # es anterior a esa decisión y quedó desactualizado; se ignora.
         todos_los_procesos, procedencia = self.buscar_cliente(page, cliente)
-        procesos_relevantes, procesos_excluidos_materia = separar_por_materia(todos_los_procesos)
 
-        total_relevantes = len(procesos_relevantes)
+        total_procesos = len(todos_los_procesos)
+
+        procesos_relevantes, procesos_excluidos_materia = separar_por_materia(todos_los_procesos)
         tematica_general = self._clasificar_tematica_general(procesos_relevantes)
 
         procesos_finales = aplicar_limite_volumen(procesos_relevantes) + procesos_excluidos_materia
@@ -276,7 +283,7 @@ class ScraperFuncionJudicial(BaseScraper):
                         )
                 self._descargar_calificados_de_tabla_actual(page, procesos_finales, calificados_en_ruc, cliente)
 
-        return procesos_finales, total_relevantes, tematica_general
+        return procesos_finales, total_procesos, tematica_general
 
     def _clasificar_tematica_general(self, procesos: list[ProcesoJudicial]) -> str:
         """

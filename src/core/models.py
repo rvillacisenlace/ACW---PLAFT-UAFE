@@ -51,3 +51,13 @@ class Denuncia:
     nombre_sospechoso: str = ""
     unidad_fiscalia: str = ""
 
+@dataclass
+class Sentenciado:
+    numero_proceso: str
+    provincia: str = ""
+    dependencia_jurisdiccional: str = ""
+    fecha_resolucion: str = ""
+    materia: str = ""
+    tipo_accion: str = ""
+    infraccion: str = ""
+    ruta_pdf: str = ""

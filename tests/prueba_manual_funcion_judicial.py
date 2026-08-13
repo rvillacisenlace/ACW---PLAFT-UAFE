@@ -20,7 +20,7 @@ with sync_playwright() as p:
 
     print(f"\n{'='*60}")
     print(f"Total de procesos: {len(procesos)}")
-    print(f"Total relevantes (antes del límite de 3): {total_relevantes}")
+    print(f"Total de procesos encontrados: {total_relevantes}")
     print(f"Temática general: {tematica}")
     for proceso in procesos:
         print(f"\n  Número: {proceso.numero_proceso}")
