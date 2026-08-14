@@ -15,6 +15,8 @@ with sync_playwright() as p:
     resultado = scraper.buscar_cliente(page, cliente)
 
     print(f"\nPDF: {resultado.ruta_pdf}")
+    print(f"Situación Laboral: {resultado.situacion_laboral}")
+    print(f"Tipo de Afiliación: {resultado.tipo_afiliacion}")
 
     input("\nPresiona ENTER para cerrar...")
     browser.close()

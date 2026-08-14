@@ -73,4 +73,5 @@ class AntecedentePenal:
 @dataclass
 class Salud:
     ruta_pdf: str = ""
-    texto_extraido: str = ""
+    situacion_laboral: str = ""  # "Relación de Dependencia (IESS)", por ejemplo
+    tipo_afiliacion: str = ""    # valor de "Tipo de seguro" de la fila con cobertura

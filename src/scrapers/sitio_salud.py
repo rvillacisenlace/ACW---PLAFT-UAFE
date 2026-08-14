@@ -154,7 +154,46 @@ class ScraperSalud(BaseScraper):
         if pdf_bytes is not None:
             ruta_guardada = guardar_pdf_local(pdf_bytes, cliente.identificacion, "cobertura_salud")
             resultado.ruta_pdf = ruta_guardada
+
+            try:
+                situacion_laboral, tipo_afiliacion = self._extraer_cobertura_del_pdf(pdf_bytes)
+                resultado.situacion_laboral = situacion_laboral
+                resultado.tipo_afiliacion = tipo_afiliacion
+            except Exception as e:
+                print(f"[{cliente.identificacion}] Falló extracción de la tabla de cobertura: {e}")
         else:
             print(f"[{cliente.identificacion}] No se pudo capturar el PDF de cobertura de salud (solo evidencia visual disponible).")
 
         return resultado
+
+    def _extraer_cobertura_del_pdf(self, pdf_bytes: bytes) -> tuple[str, str]:
+        """
+        Extrae la tabla real del PDF (Seguro | Tipo de seguro | Mensaje |
+        Registro de Cobertura) usando pdfplumber, que respeta la
+        estructura de columnas del documento - un parseo de texto plano
+        (pypdf) no permite distinguir de forma confiable dónde termina
+        "Tipo de seguro" y empieza "Mensaje", ya que ambas son texto
+        libre sin delimitador claro en la extracción lineal.
+
+        Busca la fila donde "Registro de Cobertura" diga "si registra
+        cobertura", y devuelve (situacion_laboral, tipo_afiliacion) para
+        esa fila. Si ninguna fila tiene cobertura activa, devuelve textos
+        indicando "sin cobertura".
+        """
+        import io
+        import pdfplumber
+
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            tabla = pdf.pages[0].extract_tables()[0]
+
+        # tabla[0] es el encabezado; las filas de datos empiezan en tabla[1]
+        for fila in tabla[1:]:
+            if len(fila) < 4:
+                continue
+            seguro, tipo_seguro, _mensaje, registro_cobertura = fila[0], fila[1], fila[2], fila[3]
+            if registro_cobertura and "si registra cobertura" in registro_cobertura.strip().lower():
+                situacion_laboral = f"Relación de Dependencia ({seguro.strip()})"
+                tipo_afiliacion = tipo_seguro.strip().replace("\n", " ")
+                return situacion_laboral, tipo_afiliacion
+
+        return "Sin cobertura activa", ""
