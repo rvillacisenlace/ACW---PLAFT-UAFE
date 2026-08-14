@@ -11,7 +11,6 @@ from playwright.sync_api import Page
 
 from src.scrapers.base_scraper import BaseScraper, ScraperError
 from src.core.models import Cliente, ResultadoConsulta, Salud, TipoPersona
-from src.documentos.evidencia import capturar_evidencia
 from src.documentos.almacenamiento import guardar_pdf_local
 
 
@@ -147,8 +146,6 @@ class ScraperSalud(BaseScraper):
                 print(f"[{cliente.identificacion}] Falló extracción del blob PDF: {e}")
         else:
             print(f"[{cliente.identificacion}] El PDF no llegó a generarse tras 20s de espera.")
-
-        capturar_evidencia(page, cliente.identificacion, sitio="sitio_salud_resultado", pagina_completa=False)
 
         resultado = Salud()
         if pdf_bytes is not None:

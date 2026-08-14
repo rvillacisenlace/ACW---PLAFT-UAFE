@@ -75,3 +75,9 @@ class Salud:
     ruta_pdf: str = ""
     situacion_laboral: str = ""  # "Relación de Dependencia (IESS)", por ejemplo
     tipo_afiliacion: str = ""    # valor de "Tipo de seguro" de la fila con cobertura
+
+@dataclass
+class IESS:
+    ruta_pdf: str = ""
+    iess: str = ""              # texto tal cual: "SI registra obligaciones patronales en mora" / "NO registra..."
+    deuda_obligaciones: str = ""  # solo el valor, ej. "12,683.75"
