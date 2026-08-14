@@ -11,7 +11,6 @@ with sync_playwright() as p:
 
     scraper = ScraperSRI(context=context, url_base=URL_SRI_RUC)
     cliente = Cliente(identificacion="1001322518", tipo_persona=TipoPersona.NATURAL, nombres_completos="Torres Gordillo Diego Patricio")
-
     datos = scraper.consultar_ruc(page, cliente)
     print("Datos extraídos:")
     for clave, valor in datos.items():

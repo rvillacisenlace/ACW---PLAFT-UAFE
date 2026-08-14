@@ -1,8 +1,9 @@
+import random
 from playwright.sync_api import Page
 from playwright_stealth import Stealth
 
 from src.scrapers.base_scraper import BaseScraper, ScraperError
-from src.core.models import Cliente, ResultadoConsulta
+from src.core.models import Cliente, ResultadoConsulta, TipoPersona
 
 ID_CAMPO_RUC = "#busquedaRucId"
 
@@ -23,62 +24,73 @@ class ScraperSRI(BaseScraper):
 
     def consultar_ruc(self, page: Page, cliente: Cliente) -> dict:
         """
-        Consulta el RUC (o cédula+001 derivado) y extrae los datos
-        básicos del contribuyente, actividad económica, fechas, y
-        establecimiento matriz.
-
-        NOTA IMPORTANTE: este portal usa reCAPTCHA v3 (invisible, sin
-        checkbox) - a diferencia de Función Judicial, no hay nada que
-        "resolver" manualmente. El sistema asigna un puntaje de confianza
-        basado en el comportamiento de la sesión (fingerprint del
-        navegador, velocidad de interacción). Se aplica stealth_sync
-        para reducir las señales de automatización detectables, y delays
-        más generosos que en otros scrapers.
+        Intenta primero la búsqueda directa por RUC. Si aparece el
+        bloqueo de reputación de reCAPTCHA v3 ("Puntaje bajo"), reintenta
+        con búsqueda por razón social/nombre completo - confirmado
+        empíricamente que esa vía no dispara el mismo bloqueo con la
+        misma frecuencia, aunque lleva a la misma vista de datos.
         """
         Stealth().apply_stealth_sync(page)
         page.goto(self.url_base)
         self.delay_humano(6.0, 9.0)
 
-        # El SRI SOLO acepta RUC (13 dígitos) en este campo, nunca cédula
-        # sola (10 dígitos) - a diferencia de Función Judicial, aquí no
-        # hay opción de buscar con cédula directa. Si la identificación
-        # del cliente es una cédula, se deriva el RUC agregando "001"
-        # (convención ecuatoriana para personas naturales con RUC propio).
+        for _ in range(3):
+            x = random.randint(100, 800)
+            y = random.randint(100, 600)
+            page.mouse.move(x, y, steps=random.randint(10, 25))
+            page.wait_for_timeout(random.randint(300, 800))
+
         ruc_a_consultar = (
             f"{cliente.identificacion}001"
             if len(cliente.identificacion.strip()) == 10
             else cliente.identificacion
         )
-        print(f"[{self.nombre_sitio}] Consultando con: {ruc_a_consultar}")
+        print(f"[{self.nombre_sitio}] Consultando con RUC: {ruc_a_consultar}")
         page.fill(ID_CAMPO_RUC, ruc_a_consultar)
         self.delay_humano(4.0, 6.0)
 
-        # Primer clic en "Consultar" - se habilita tras escribir
+        page.mouse.wheel(0, random.randint(50, 150))
+        page.wait_for_timeout(random.randint(500, 1000))
+
         botones_consultar = page.locator("button:has-text('Consultar')")
         botones_consultar.first.click()
         self.delay_humano(5.0, 8.0)
 
         if self.tiene_captcha(page):
-            raise ScraperError(
-                f"[{self.nombre_sitio}] Captcha detectado tras primera consulta.",
-                resultado=ResultadoConsulta.ERROR_CAPTCHA,
+            print(f"[{self.nombre_sitio}] Bloqueo detectado por RUC - reintentando por razón social/nombre...")
+
+            nombre_o_razon_social = (
+                cliente.nombres_completos if cliente.tipo_persona == TipoPersona.NATURAL
+                else cliente.razon_social
             )
 
-        # Segundo clic en "Consultar" (mostrar establecimientos) - aparece
-        # una sección nueva con OTRO botón del mismo texto. Esperamos a
-        # que haya al menos 2 botones "Consultar" visibles antes de hacer
-        # clic en el segundo (índice 1), para no hacer clic prematuro.
-        page.wait_for_function(
-            """() => document.querySelectorAll('button').length > 0 &&
-                     Array.from(document.querySelectorAll('button'))
-                       .filter(b => b.innerText.includes('Consultar')).length >= 2""",
-            timeout=10000,
-        )
-        botones_consultar_actualizados = page.locator("button:has-text('Consultar')")
-        botones_consultar_actualizados.nth(1).click()
+            page.goto(self.url_base)
+            self.delay_humano(6.0, 9.0)
+
+            self._buscar_por_razon_social(page, nombre_o_razon_social)
+
+            if self.tiene_captcha(page):
+                raise ScraperError(
+                    f"[{self.nombre_sitio}] Bloqueo persiste incluso con búsqueda por razón social.",
+                    resultado=ResultadoConsulta.ERROR_CAPTCHA,
+                )
+
+        boton_mostrar_establecimientos = page.locator("button:has-text('Mostrar establecimientos')")
+        boton_mostrar_establecimientos.wait_for(state="visible", timeout=15000)
+        boton_mostrar_establecimientos.click()
         self.delay_humano(5.0, 8.0)
 
         return self._extraer_datos_contribuyente(page)
+
+    def _buscar_por_razon_social(self, page: Page, nombre_o_razon_social: str) -> None:
+        page.click("button[aria-label='Seleccionar búsqueda por razón social']")
+        self.delay_humano(4.0, 6.0)
+
+        page.fill("#busquedaRazonSocialId", nombre_o_razon_social)
+        self.delay_humano(4.0, 6.0)
+
+        page.click("button:has-text('Consultar')")
+        self.delay_humano(4.0, 6.0)
 
     def _extraer_datos_contribuyente(self, page: Page) -> dict:
         datos = {
@@ -144,7 +156,7 @@ class ScraperSRI(BaseScraper):
         except Exception:
             pass
 
+        return datos
+
     def buscar_cliente(self, page: Page, cliente: Cliente) -> dict:
         return self.consultar_ruc(page, cliente)
-    
-        return datos
