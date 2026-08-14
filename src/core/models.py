@@ -61,3 +61,11 @@ class Sentenciado:
     tipo_accion: str = ""
     infraccion: str = ""
     ruta_pdf: str = ""
+
+@dataclass
+class AntecedentePenal:
+    nombre: str = ""
+    tipo_documento: str = ""
+    numero_documento: str = ""
+    posee_antecedentes: str = ""
+    ruta_pdf: str = ""

@@ -85,4 +85,55 @@ def resolver_con_2captcha(page: Page, api_key: str, tiempo_espera_segundos: int 
         boton_verificar.first.click()
         page.wait_for_timeout(2500)
 
+    
+def resolver_hcaptcha_con_2captcha(page: Page, api_key: str, tiempo_espera_segundos: int = 180) -> bool:
+    """
+    Resuelve un hCaptcha (distinto de reCAPTCHA - servicio y API distintos)
+    usando 2Captcha. Extrae el sitekey del iframe de hCaptcha, resuelve,
+    inyecta el token, y dispara el callback esperado por hCaptcha.
+    """
+    if not api_key:
+        raise CaptchaResolverError("CAPTCHA_API_KEY no está configurada en .env")
+
+    solver = TwoCaptcha(api_key, defaultTimeout=tiempo_espera_segundos, pollingInterval=10)
+
+    iframe_hcaptcha = page.locator("iframe[src*='hcaptcha.com']").first
+    if iframe_hcaptcha.count() == 0:
+        raise CaptchaResolverError("No se encontró el iframe de hCaptcha en la página")
+
+    src_iframe = iframe_hcaptcha.get_attribute("src") or ""
+    site_key = None
+    for parte in src_iframe.split("&"):
+        if parte.startswith("sitekey="):
+            site_key = parte.split("=", 1)[1]
+            break
+
+    if not site_key:
+        raise CaptchaResolverError(
+            f"No se pudo extraer el sitekey del iframe de hCaptcha (src: {src_iframe[:200]})"
+        )
+
+    try:
+        resultado = solver.hcaptcha(
+            sitekey=site_key,
+            url=page.url,
+        )
+        token = resultado["code"]
+    except Exception as e:
+        raise CaptchaResolverError(f"2Captcha no pudo resolver el hCaptcha: {e}")
+
+    # hCaptcha usa un textarea con name="h-captcha-response" (equivalente
+    # al g-recaptcha-response de Google), y un segundo campo interno
+    # "g-recaptcha-response" también, por compatibilidad de algunas
+    # integraciones - se llenan ambos para máxima compatibilidad.
+    page.evaluate(
+        """(token) => {
+            const campos = document.querySelectorAll(
+                'textarea[name="h-captcha-response"], textarea[name="g-recaptcha-response"]'
+            );
+            campos.forEach(campo => { campo.innerHTML = token; campo.value = token; });
+        }""",
+        token,
+    )
+
     return True
