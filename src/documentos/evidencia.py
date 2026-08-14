@@ -5,11 +5,21 @@ from playwright.sync_api import Page
 from PIL import Image, ImageDraw
 
 
-def capturar_evidencia(page: Page, identificacion_cliente: str, sitio: str, base_dir: str = "./data/staging") -> dict:
+def capturar_evidencia(
+    page: Page, identificacion_cliente: str, sitio: str,
+    base_dir: str = "./data/staging", pagina_completa: bool = True
+) -> dict:
     """
     Captura screenshot de la página actual, agrega overlay de fecha/hora
     (lectura humana), y calcula hash SHA-256 (integridad real, para que
     cualquier alteración posterior del archivo sea detectable).
+
+    pagina_completa=False: usa captura de solo el viewport visible, no
+    "página completa". Necesario para sitios donde el contenido incluye
+    un visor de PDF embebido (extensión nativa de Chrome) - el cálculo
+    de altura de "página completa" no considera correctamente ese
+    visor, dejando una franja negra en la parte inferior de la captura
+    (confirmado con el sitio de Cobertura de Salud).
     """
     ahora = datetime.now()
     carpeta = os.path.join(
@@ -21,7 +31,7 @@ def capturar_evidencia(page: Page, identificacion_cliente: str, sitio: str, base
     nombre_archivo = f"evidencia_{sitio}_{timestamp_archivo}.png"
     ruta_archivo = os.path.join(carpeta, nombre_archivo)
 
-    page.screenshot(path=ruta_archivo, full_page=True)
+    page.screenshot(path=ruta_archivo, full_page=pagina_completa)
 
     # Overlay de fecha/hora - para lectura humana rápida del abogado
     timestamp_legible = ahora.strftime("%Y-%m-%d %H:%M:%S")

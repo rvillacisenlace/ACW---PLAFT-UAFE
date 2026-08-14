@@ -69,3 +69,8 @@ class AntecedentePenal:
     numero_documento: str = ""
     posee_antecedentes: str = ""
     ruta_pdf: str = ""
+
+@dataclass
+class Salud:
+    ruta_pdf: str = ""
+    texto_extraido: str = ""
