@@ -81,3 +81,9 @@ class IESS:
     ruta_pdf: str = ""
     iess: str = ""              # texto tal cual: "SI registra obligaciones patronales en mora" / "NO registra..."
     deuda_obligaciones: str = ""  # solo el valor, ej. "12,683.75"
+
+@dataclass
+class DeudaSRI:
+    tiene_deuda_firme: bool = False
+    valor_deuda_firme: str = "$0.00"
+    mensaje: str = ""
