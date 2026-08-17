@@ -87,3 +87,21 @@ class DeudaSRI:
     tiene_deuda_firme: bool = False
     valor_deuda_firme: str = "$0.00"
     mensaje: str = ""
+
+@dataclass
+class EstadoTributarioSRI:
+    resultado: str = ""              # "AL DIA EN SUS OBLIGACIONES" u otro estado
+    obligaciones_pendientes: str = ""  # ej. "2011 DECLARACION DE IVA MAYO 2026 / ..."
+
+@dataclass
+class CompaniaSCVS:
+    ruc: str = ""
+    expediente: str = ""
+    representante_legal_scvs_referencia: str = ""  # texto completo, solo referencia - NO sobreescribe el del SRI
+    capital_social: str = ""
+    situacion_legal: str = ""
+    cumplimiento_obligaciones: str = ""
+    fecha_consulta: str = ""
+    registrado: bool = True
+    mensaje: str = ""
+    ruta_pdf: str = ""
