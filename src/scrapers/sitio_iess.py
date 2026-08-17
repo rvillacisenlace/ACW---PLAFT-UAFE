@@ -54,6 +54,7 @@ class ScraperIESS(BaseScraper):
         # nativo de descarga de Playwright).
         pdf_bytes = None
         hay_registro = False
+        mensaje_error = ""
         try:
             with page.expect_download(timeout=10000) as info_descarga:
                 page.click(ID_BOTON_CONSULTAR)
@@ -62,13 +63,20 @@ class ScraperIESS(BaseScraper):
                 pdf_bytes = f.read()
             hay_registro = True
         except Exception:
-            # No hubo descarga dentro del tiempo esperado - se asume que
-            # el portal mostró el mensaje de "no existen registros"
-            # (texto exacto sin confirmar, pendiente de validar con un
-            # caso real de "sin registros").
+            # No hubo descarga - el portal responde con un mensaje
+            # explícito ("El RUC ingresado no es correcto") en vez de
+            # un mensaje de "sin registros".
+            # Esto es un resultado legítimo (la persona no tiene RUC de
+            # empleador válido en el IESS), no necesariamente un error
+            # técnico del scraper.
             self.delay_humano(1.5, 2.5)
+            try:
+                texto_pagina = page.locator("#formContenido\\:mensajePrincipal").inner_text()
+                mensaje_error = texto_pagina.strip()
+            except Exception:
+                mensaje_error = "Mensaje de error no capturado"
 
-        resultado = {"hay_registro": hay_registro, "ruta_pdf": "", "iess": "", "deuda_obligaciones": ""}
+        resultado = {"hay_registro": hay_registro, "ruta_pdf": "", "iess": mensaje_error, "deuda_obligaciones": ""}
         if pdf_bytes is not None:
             from src.documentos.almacenamiento import guardar_pdf_local
             ruta_guardada = guardar_pdf_local(pdf_bytes, cliente.identificacion, "certificado_iess")

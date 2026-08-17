@@ -101,7 +101,11 @@ class ScraperSRI(BaseScraper):
             "fecha_actualizacion": "",
             "fecha_cese_actividades": "",
             "fecha_reinicio_actividades": "",
-            "establecimientos": [],
+            "direccion_matriz": "",
+            "representante_legal_nombre": "",
+            "representante_legal_identificacion": "",
+            "contribuyente_fantasma": "",
+            "contribuyente_transacciones_inexistentes": "",
         }
 
         try:
@@ -141,18 +145,43 @@ class ScraperSRI(BaseScraper):
             pass
 
         try:
+            # Solo se necesita la dirección del establecimiento MATRIZ
             filas_establecimientos = page.locator(
                 "sri-listar-establecimientos table tbody tr"
             ).all()
             for fila in filas_establecimientos:
                 celdas_valor = fila.locator("span.ui-cell-data").all_inner_texts()
-                if len(celdas_valor) >= 4:
-                    datos["establecimientos"].append({
-                        "numero": celdas_valor[0].strip(),
-                        "nombre_comercial": celdas_valor[1].strip(),
-                        "ubicacion": celdas_valor[2].strip(),
-                        "estado": celdas_valor[3].strip(),
-                    })
+                if len(celdas_valor) >= 4 and celdas_valor[0].strip() == "001":
+                    datos["direccion_matriz"] = celdas_valor[2].strip()
+                    break
+        except Exception:
+            pass
+
+        try:
+            datos["representante_legal_nombre"] = page.locator(
+                "div.sri-bold:has-text('Nombre/Razón Social:')"
+            ).locator("xpath=following-sibling::div[1]").inner_text().strip()
+        except Exception:
+            pass
+
+        try:
+            datos["representante_legal_identificacion"] = page.locator(
+                "div.sri-bold:has-text('Identificación:')"
+            ).locator("xpath=following-sibling::div[1]").inner_text().strip()
+        except Exception:
+            pass
+
+        try:
+            datos["contribuyente_fantasma"] = page.locator(
+                "div.sri-bold:has-text('Contribuyente fantasma')"
+            ).locator("xpath=following::span[1]").inner_text().strip()
+        except Exception:
+            pass
+
+        try:
+            datos["contribuyente_transacciones_inexistentes"] = page.locator(
+                "div.sri-bold:has-text('Contribuyente con transacciones inexistentes')"
+            ).locator("xpath=following::span[1]").inner_text().strip()
         except Exception:
             pass
 
