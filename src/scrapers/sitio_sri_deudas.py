@@ -71,7 +71,7 @@ class ScraperSRIDeudas(ScraperSRI):
         self.delay_humano(1.5, 2.5)
 
         from src.documentos.evidencia import capturar_evidencia
-        capturar_evidencia(page, cliente.identificacion, sitio="sitio_sri_deudas_resultado")
+        capturar_evidencia(page, cliente.identificacion, sitio="sitio_sri_deudas_resultado", carpeta_sitio="sri")
 
         return self._extraer_deuda_firme(page)
 

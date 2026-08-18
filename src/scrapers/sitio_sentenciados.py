@@ -83,7 +83,7 @@ class ScraperSentenciados(BaseScraper):
         if top3:
             try:
                 pdf_bytes = self._descargar_pdf_sentencia(page)
-                ruta_guardada = guardar_pdf_local(pdf_bytes, cliente.identificacion, "reporte_sentenciados")
+                ruta_guardada = guardar_pdf_local(pdf_bytes, cliente.identificacion, "reporte_sentenciados", carpeta_sitio="sentenciados")
                 for sentenciado in top3:
                     sentenciado.ruta_pdf = ruta_guardada
             except Exception as e:
@@ -133,7 +133,7 @@ class ScraperSentenciados(BaseScraper):
             pass
         self.delay_humano(2.0, 3.0)
 
-        capturar_evidencia(page, cliente.identificacion, sitio=f"sitio_sentenciados_{tipo_radio}")
+        capturar_evidencia(page, cliente.identificacion, sitio=f"sitio_sentenciados_{tipo_radio}", carpeta_sitio="sentenciados")
 
         filas = page.locator("tbody tr[ng-repeat]").all()
         # TODO: este portal tiene paginación (no confirmada aún con un

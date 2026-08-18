@@ -83,7 +83,7 @@ class ScraperFiscalia(BaseScraper):
             page.click(ID_BOTON_BUSCAR)
         self.delay_humano(1.0, 1.5)
 
-        capturar_evidencia(page, cliente.identificacion, sitio="sitio2_fiscalia")
+        capturar_evidencia(page, cliente.identificacion, sitio="sitio2_fiscalia", carpeta_sitio="fiscalia")
         return self._extraer_denuncias(page, cliente)
 
     def _extraer_denuncias(self, page: Page, cliente: Cliente) -> list[Denuncia]:

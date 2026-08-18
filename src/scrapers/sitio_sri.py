@@ -81,7 +81,7 @@ class ScraperSRI(BaseScraper):
         self.delay_humano(5.0, 8.0)
 
         from src.documentos.evidencia import capturar_evidencia
-        capturar_evidencia(page, cliente.identificacion, sitio="sitio_sri_ruc_resultado")
+        capturar_evidencia(page, cliente.identificacion, sitio="sitio_sri_ruc_resultado", carpeta_sitio="sri")
 
         return self._extraer_datos_contribuyente(page)
 

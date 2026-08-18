@@ -73,14 +73,14 @@ class ScraperSCVSCompanias(BaseScraper):
         self.delay_humano(2.0, 3.0)
 
         from src.documentos.evidencia import capturar_evidencia
-        capturar_evidencia(page, cliente.identificacion, sitio="sitio_scvs_companias_resultado")
+        capturar_evidencia(page, cliente.identificacion, sitio="sitio_scvs_companias_resultado", carpeta_sitio="scvs")
 
         resultado = self._extraer_datos_compania(page)
 
         try:
             pdf_bytes = self.descargar_certificado(page, cliente)
             from src.documentos.almacenamiento import guardar_pdf_local
-            resultado.ruta_pdf = guardar_pdf_local(pdf_bytes, cliente.identificacion, "certificado_cumplimiento_scvs")
+            resultado.ruta_pdf = guardar_pdf_local(pdf_bytes, cliente.identificacion, "certificado_cumplimiento_scvs", carpeta_sitio="scvs")
         except Exception as e:
             print(f"[{cliente.identificacion}] Falló descarga del certificado SCVS: {e}")
 

@@ -128,7 +128,7 @@ class ScraperSRIEstadoTributario(ScraperSRI):
             pass
 
         from src.documentos.evidencia import capturar_evidencia
-        capturar_evidencia(page, cliente.identificacion, sitio="sitio_sri_estado_tributario_resultado")
+        capturar_evidencia(page, cliente.identificacion, sitio="sitio_sri_estado_tributario_resultado", carpeta_sitio="sri")
 
         try:
             filas = page.locator("p-datatable tbody tr").all()

@@ -359,7 +359,8 @@ class ScraperFuncionJudicial(BaseScraper):
 
             capturar_evidencia(
                 page, cliente.identificacion,
-                sitio=f"sitio1_funcion_judicial_{tipo_busqueda}_pagina{numero_pagina}"
+                sitio=f"sitio1_funcion_judicial_{tipo_busqueda}_pagina{numero_pagina}",
+                carpeta_sitio="funcion_judicial"
             )
 
             boton_siguiente = page.locator(ID_PAGINADOR_SIGUIENTE)
@@ -483,7 +484,8 @@ class ScraperFuncionJudicial(BaseScraper):
                 for i, pdf_bytes in enumerate(lista_pdfs):
                     sufijo = f"_mov{i+1}" if len(lista_pdfs) > 1 else ""
                     ruta_guardada = guardar_pdf_local(
-                        pdf_bytes, cliente.identificacion, f"{proceso.numero_proceso}{sufijo}"
+                        pdf_bytes, cliente.identificacion, f"{proceso.numero_proceso}{sufijo}",
+                        carpeta_sitio="funcion_judicial"
                     )
                     rutas_guardadas.append(ruta_guardada)
                 proceso.ruta_pdf = "; ".join(rutas_guardadas)

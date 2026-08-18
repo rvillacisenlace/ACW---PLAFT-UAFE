@@ -103,7 +103,8 @@ class ScraperContraloria(BaseScraper):
 
             capturar_evidencia(
                 page, cliente.identificacion,
-                sitio=f"sitio_contraloria_pagina{numero_pagina}"
+                sitio=f"sitio_contraloria_pagina{numero_pagina}",
+                carpeta_sitio="contraloria"
             )
 
             if page.locator("td.dataTables_empty").count() > 0:
