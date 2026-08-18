@@ -105,3 +105,10 @@ class CompaniaSCVS:
     registrado: bool = True
     mensaje: str = ""
     ruta_pdf: str = ""
+
+@dataclass
+class DeudaMunicipal:
+    tiene_deuda: bool = False
+    valor_total: str = "$0.00"
+    registrado: bool = True
+    mensaje: str = ""
