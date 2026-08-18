@@ -16,10 +16,5 @@ with sync_playwright() as p:
     for clave, valor in datos.items():
         print(f"  {clave}: {valor}")
 
-    print(f"  representante_legal_nombre: {datos['representante_legal_nombre']}")
-    print(f"  representante_legal_identificacion: {datos['representante_legal_identificacion']}")
-    print(f"  contribuyente_fantasma: {datos['contribuyente_fantasma']}")
-    print(f"  contribuyente_transacciones_inexistentes: {datos['contribuyente_transacciones_inexistentes']}")
-
     input("Presiona ENTER para cerrar...")
     browser.close()
