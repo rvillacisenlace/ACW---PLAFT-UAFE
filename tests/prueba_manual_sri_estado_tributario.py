@@ -10,7 +10,7 @@ with sync_playwright() as p:
     page = context.new_page()
 
     scraper = ScraperSRIEstadoTributario(context=context, url_base=URL_SRI_ESTADO_TRIBUTARIO)
-    cliente = Cliente(identificacion="0850513433001", tipo_persona=TipoPersona.NATURAL, nombres_completos="Villacis Olivo Rommel Joerick")
+    cliente = Cliente(identificacion="0850513433", tipo_persona=TipoPersona.NATURAL, nombres_completos="Villacis Olivo Rommel Joerick")
 
     resultado = scraper.consultar_estado_tributario(page, cliente)
     print(f"\nResultado: {resultado.resultado}")

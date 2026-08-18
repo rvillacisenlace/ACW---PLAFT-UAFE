@@ -57,7 +57,7 @@ class ScraperSRIEstadoTributario(ScraperSRI):
                 )
 
         self.delay_humano(1.5, 2.5)
-        return self._extraer_estado_tributario(page)
+        return self._extraer_estado_tributario(page, cliente)
 
     def _clic_consultar_robusto(self, page: Page, max_intentos: int = 5) -> None:
         """Mismo mecanismo confirmado en Consulta de Deudas Firmes."""
@@ -102,7 +102,7 @@ class ScraperSRIEstadoTributario(ScraperSRI):
                 else:
                     print(f"    [{self.nombre_sitio}] Advertencia: la página no confirmó resultado tras {max_reintentos} reintentos.")
 
-    def _extraer_estado_tributario(self, page: Page) -> EstadoTributarioSRI:
+    def _extraer_estado_tributario(self, page: Page, cliente: Cliente) -> EstadoTributarioSRI:
         resultado = EstadoTributarioSRI()
 
         try:
@@ -111,6 +111,24 @@ class ScraperSRIEstadoTributario(ScraperSRI):
             ).locator("xpath=following::span[1]").inner_text().strip()
         except Exception:
             pass
+
+        # La tabla de obligaciones pendientes vive dentro de un acordeón
+        # (mat-expansion-panel) colapsado por defecto - hay que hacer
+        # clic en el encabezado para desplegarlo antes de que el
+        # contenido se renderice (confirmado: sin este clic, la tabla
+        # nunca aparece en el DOM de forma visible).
+        try:
+            encabezado_acordeon = page.locator(
+                "mat-panel-title:has-text('Obligaciones tributarias pendientes de presentación')"
+            )
+            if encabezado_acordeon.count() > 0:
+                encabezado_acordeon.click()
+                self.delay_humano(1.0, 1.5)
+        except Exception:
+            pass
+
+        from src.documentos.evidencia import capturar_evidencia
+        capturar_evidencia(page, cliente.identificacion, sitio="sitio_sri_estado_tributario_resultado")
 
         try:
             filas = page.locator("p-datatable tbody tr").all()
