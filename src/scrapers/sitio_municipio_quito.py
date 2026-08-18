@@ -9,7 +9,7 @@ from playwright.sync_api import Page
 from src.scrapers.base_scraper import BaseScraper, ScraperError
 from src.core.models import Cliente, ResultadoConsulta, TipoPersona
 from src.documentos.evidencia import capturar_evidencia
-
+from src.core.models import Cliente, ResultadoConsulta, DeudaMunicipal, TipoPersona
 
 class ScraperMunicipioQuito(BaseScraper):
     nombre_sitio = "Municipio de Quito"
@@ -55,11 +55,16 @@ class ScraperMunicipioQuito(BaseScraper):
                 break
 
         if indice_fila_exacta is None:
-            raise ScraperError(
-                f"[{self.nombre_sitio}] No se encontró coincidencia exacta para "
-                f"'{nombre_o_razon_social}' entre los resultados (posibles variantes con "
-                f"nombres similares, ej. 'Y OTROS').",
-                resultado=ResultadoConsulta.SIN_DATOS,
+            # No hay coincidencia exacta - solo variantes (ej. "Y OTROS").
+            # Se trata igual que "no registrado": sin deuda, sin error,
+            # continuando con el resto del flujo (decisión de negocio
+            # confirmada).
+            capturar_evidencia(page, cliente.identificacion, sitio="sitio_municipio_quito_resultado", carpeta_sitio="municipio_quito")
+            return DeudaMunicipal(
+                registrado=False,
+                mensaje="Sin coincidencia exacta del nombre",
+                tiene_deuda=False,
+                valor_total="$0.00",
             )
 
         # Se hace clic sobre el enlace <a href="/ListadoObligaciones/{i}/">,
@@ -79,21 +84,35 @@ class ScraperMunicipioQuito(BaseScraper):
         input("Cuando termines, presiona ENTER aquí para continuar...")
         print(f"{'='*60}\n")
 
-    def _extraer_resultado(self, page: Page, cliente: Cliente) -> dict:
-        # TODO: falta confirmar si hay que hacer clic en "Ver" (ícono
-        # de lupa) antes de que aparezca el detalle con el total
-        # adeudado, o si ya se ve directo tras "Consultar". Pendiente
-        # de confirmar con un caso real.
+    def _extraer_resultado(self, page: Page, cliente: Cliente) -> DeudaMunicipal:
+        # Caso 1: no existe ningún registro para el nombre/razón social
+        # ingresado (distinto de "registrado pero sin deuda"). Se
+        # captura evidencia y se lee el mensaje ANTES de cerrar el modal
+        # con "Aceptar" (confirmado que no se cierra solo).
+        if page.locator("#lblMensaje").count() > 0:
+            texto_mensaje = page.locator("#lblMensaje").inner_text().strip()
+            capturar_evidencia(page, cliente.identificacion, sitio="sitio_municipio_quito_resultado", carpeta_sitio="municipio_quito")
 
+            try:
+                page.locator("#btnAceptarMensaje").click()
+                self.delay_humano(0.5, 1.0)
+            except Exception:
+                pass
+
+            return DeudaMunicipal(registrado=False, mensaje=texto_mensaje, tiene_deuda=False, valor_total="$0.00")
+
+        # Caso 2: registrado, pero sin deuda pendiente.
         if page.locator("#lblMensajeSinDeuda").count() > 0:
             capturar_evidencia(page, cliente.identificacion, sitio="sitio_municipio_quito_resultado", carpeta_sitio="municipio_quito")
-            return {"tiene_deuda": False, "valor_total": "$0.00"}
+            return DeudaMunicipal(registrado=True, tiene_deuda=False, valor_total="$0.00")
 
+        # Caso 3: registrado, con deuda.
         try:
             valor_total = page.locator("tr.listado__fila__Total span").inner_text().strip()
         except Exception:
             valor_total = ""
 
         capturar_evidencia(page, cliente.identificacion, sitio="sitio_municipio_quito_resultado", carpeta_sitio="municipio_quito")
-        return {"tiene_deuda": bool(valor_total), "valor_total": valor_total}
-    
+
+        tiene_deuda = valor_total not in ("$0.00", "")
+        return DeudaMunicipal(registrado=True, tiene_deuda=tiene_deuda, valor_total=valor_total)

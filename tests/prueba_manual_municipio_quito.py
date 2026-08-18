@@ -10,11 +10,13 @@ with sync_playwright() as p:
     page = context.new_page()
 
     scraper = ScraperMunicipioQuito(context=context, url_base=URL_MUNICIPIO_QUITO)
-    cliente = Cliente(identificacion="0990014094001", tipo_persona=TipoPersona.JURIDICA, razon_social="INDUAUTO S.A.")
+    cliente = Cliente(identificacion="0850513433001", tipo_persona=TipoPersona.NATURAL, nombres_completos="VILLACIS OLIVO ROMMEL JOERICK")
 
     resultado = scraper.buscar_cliente(page, cliente)
-    print(f"\n¿Tiene deuda?: {resultado['tiene_deuda']}")
-    print(f"Valor total: {resultado['valor_total']}")
+    print(f"\n¿Registrado?: {resultado.registrado}")
+    print(f"¿Tiene deuda?: {resultado.tiene_deuda}")
+    print(f"Valor total: {resultado.valor_total}")
+    print(f"Mensaje: {resultado.mensaje}")
 
     input("\nPresiona ENTER para cerrar...")
     browser.close()
