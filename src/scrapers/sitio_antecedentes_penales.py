@@ -145,14 +145,30 @@ class ScraperAntecedentesPenales(BaseScraper):
         pestana_pdf = info_pestana_nueva.value
 
         pestana_pdf.wait_for_load_state("domcontentloaded", timeout=15000)
+
+        # Espera activa a que la URL termine de estabilizarse en algo
+        # distinto a about:blank o vacío - confirmado que a veces la
+        # navegación real (redirección al PDF) no ha terminado cuando
+        # "domcontentloaded" se dispara, dejando pestana_pdf.url vacía
+        # o incompleta, causando "Invalid URL" en la petición HTTP.
         url_pdf = pestana_pdf.url
+        for _ in range(10):  # hasta 5 segundos de margen adicional
+            if url_pdf and url_pdf != "about:blank":
+                break
+            page.wait_for_timeout(500)
+            url_pdf = pestana_pdf.url
 
         if pestana_pdf and not pestana_pdf.is_closed():
             pestana_pdf.close()
 
-        if not url_pdf or "pdf" not in url_pdf.lower() and "certificado" not in url_pdf.lower():
-            # La URL no parece ser directamente el PDF - de todas formas
-            # intentamos la petición, pero lo anotamos por si falla.
+        if not url_pdf or url_pdf == "about:blank":
+            raise ScraperError(
+                f"[{self.nombre_sitio}] La pestaña del certificado nunca navegó a una URL real "
+                f"tras 15s + 5s de espera adicional.",
+                resultado=ResultadoConsulta.ERROR_DESCONOCIDO,
+            )
+
+        if "pdf" not in url_pdf.lower() and "certificado" not in url_pdf.lower():
             print(f"    [aviso] URL de la pestaña no contiene 'pdf' explícito: {url_pdf}")
 
         respuesta = page.context.request.get(url_pdf)
