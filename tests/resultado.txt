@@ -6,25 +6,7 @@ PROCESANDO CLIENTE: 1001322518 - Torres Gordillo Diego Patricio
 
 [1001322518] OK - funcion_judicial
 [1001322518] OK - fiscalia
-[1001322518] FALLÓ (sentenciados): TimeoutError: Page.fill: Timeout 30000ms exceeded.
-Call log:
-  - waiting for locator("#input_2")
-    - locator resolved to <input focus="" id="input_2" name="nombre" ng-minlength="5" readonly="readOnly" aria-invalid="false" ng-model="vmAntecedente.nombre" ng-readonly="vmAntecedente.pLectura" ng-required="!vmAntecedente.pActivacionNombre" class="ng-pristine md-input ng-empty ng-valid-minlength ng-touched ng-valid ng-valid-required"/>
-    - fill("TORRES GORDILLO DIEGO PATRICIO")
-  - attempting fill action
-    2 × waiting for element to be visible, enabled and editable
-      - element is not visible
-    - retrying fill action
-    - waiting 20ms
-    2 × waiting for element to be visible, enabled and editable
-      - element is not visible
-    - retrying fill action
-      - waiting 100ms
-    59 × waiting for element to be visible, enabled and editable
-       - element is not visible
-     - retrying fill action
-       - waiting 500ms
- - marcado para revisión manual
+[1001322518] OK - sentenciados
 [SRI - Consulta de RUC] Consultando con RUC: 1001322518001
 [1001322518] OK - sri_ruc
 C:\Users\villacisr\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\playwright_stealth\stealth.py:216: UserWarning: Stealth has already been applied to this page or context. Skipping duplicate application.
@@ -36,8 +18,6 @@ C:\Users\villacisr\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pla
 Presiona ENTER cuando estés listo para continuar y resolver el captcha si aparece...
     [aviso cookies] cerrado correctamente
     [términos y condiciones] aceptados correctamente
-    [aviso] URL de la pestaña no contiene 'pdf' explícito:
-[1001322518] Falló descarga del certificado: Error: APIRequestContext.get: Invalid URL
 [1001322518] OK - antecedentes_penales
 [1001322518] OK - salud
 [1001322518] OK - iess
@@ -79,15 +59,12 @@ Cuando termines, presiona ENTER aquí para continuar...
 
 [1001322518] OK - municipio_manta
 [1001322518] OK - sercop_proveedor
-    [SERCOP - Certificados] Advertencia: no se confirmó ningún resultado tras 15s (tipo 6903).
 [1001322518] OK - sercop_certificados
 
 ======================================================================
 PROCESANDO CLIENTE: 0990014094001 - INDUAUTO S.A.
 ======================================================================
 
-    [advertencia] la página 2 no avanzó
-    [razonsocial] intento 1/3 incompleto, reintentando búsqueda completa desde cero...
 [0990014094001] OK - funcion_judicial
 [0990014094001] Sin resultados por razón social en Fiscalía, probando por RUC...
 [0990014094001] OK - fiscalia
@@ -108,8 +85,6 @@ Call log:
     43 × locator resolved to hidden <a tabindex="0" role="button" class="cc-btn cc-dismiss" aria-label="dismiss cookie message">Aceptar!</a>
 
     [términos y condiciones] aceptados correctamente
-    [aviso] URL de la pestaña no contiene 'pdf' explícito:
-[1714341672] Falló descarga del certificado: Error: APIRequestContext.get: Invalid URL
 [0990014094001] OK - antecedentes_penales
 [0990014094001] OK - salud
 [0990014094001] OK - iess
@@ -161,7 +136,7 @@ RESUMEN FINAL
 Cliente 1001322518:
   funcion_judicial: ✅ OK
   fiscalia: ✅ OK
-  sentenciados: ❌ REVISIÓN MANUAL
+  sentenciados: ✅ OK
   sri_ruc: ✅ OK
   sri_deudas: ✅ OK
   sri_estado_tributario: ✅ OK
@@ -199,3 +174,4 @@ Cliente 0990014094001:
   sercop_certificados: ✅ OK
 
 Presiona ENTER para cerrar...
+PS C:\Users\villacisr\Desktop\Automatizacion_PLAF\Dev\ACW-PLAFT-UAFE>
