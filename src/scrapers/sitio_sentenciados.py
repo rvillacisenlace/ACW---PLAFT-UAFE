@@ -112,7 +112,15 @@ class ScraperSentenciados(BaseScraper):
             self.delay_humano(0.5, 1.0)
             page.fill("#input_3", valor_busqueda)
         else:
-            # "Nombre" es el radio por defecto, no hace falta clic
+            # "Nombre" aparece marcado como seleccionado por defecto en
+            # el atributo HTML, pero el campo #input_2 permanece en
+            # readonly hasta que se dispara explícitamente el evento
+            # ng-change de Angular con un clic real - confirmado con
+            # error real (TimeoutError al intentar fill en campo
+            # readonly). El clic es necesario aunque el radio "ya esté
+            # marcado" visualmente.
+            page.click("#radio_0")
+            self.delay_humano(0.5, 1.0)
             page.fill("#input_2", valor_busqueda.upper())
 
         self.delay_humano(0.5, 1.0)

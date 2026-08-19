@@ -21,6 +21,21 @@ class Cliente:
             return self.nombres_completos
         return self.razon_social.strip() or self.nombres_completos
 
+    @property
+    def es_juridica_con_ruc_persona_natural(self) -> bool:
+        """
+        Caso especial: cliente marcado como Jurídica, pero sin razón
+        social propia y con nombres_completos lleno - indica que en
+        realidad es una persona natural con RUC propio (negocio
+        unipersonal), no una empresa real. Se le aplica la misma lógica
+        de búsqueda robusta que a un cliente Natural.
+        """
+        return (
+            self.tipo_persona == TipoPersona.JURIDICA
+            and not self.razon_social.strip()
+            and bool(self.nombres_completos.strip())
+        )
+
 class ResultadoConsulta(str, Enum):
     EXITO = "exito"
     TIMEOUT = "timeout"
