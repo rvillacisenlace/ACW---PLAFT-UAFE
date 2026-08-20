@@ -140,7 +140,7 @@ class ScraperSCVSCompanias(BaseScraper):
         directamente por HTTP.
         """
         boton_generar = page.locator("button[title='Haga clic aquí para generar el certificado']")
-        boton_generar.wait_for(state="visible", timeout=15000)
+        boton_generar.wait_for(state="visible", timeout=25000)
         boton_generar.click(force=True)
 
         # El diálogo muestra "Procesando..." antes de renderizar el
@@ -148,7 +148,7 @@ class ScraperSCVSCompanias(BaseScraper):
         # delay fijo, que resultó insuficiente.
         checkbox_selector = "#frmCaptcha input[type='checkbox'].altcha-checkbox, #frmCaptcha div.altcha-checkbox input[type='checkbox']"
         try:
-            page.wait_for_selector(checkbox_selector, state="visible", timeout=15000)
+            page.wait_for_selector(checkbox_selector, state="visible", timeout=30000)
         except Exception:
             raise ScraperError(
                 f"[{self.nombre_sitio}] El captcha del certificado no terminó de cargar tras 15s.",
@@ -167,7 +167,7 @@ class ScraperSCVSCompanias(BaseScraper):
         boton_continuar.click(force=True)
 
         objetos_pdf = page.locator("object[type='application/pdf']")
-        objetos_pdf.last.wait_for(state="visible", timeout=15000)
+        objetos_pdf.last.wait_for(state="visible", timeout=25000)
 
         url_relativa = objetos_pdf.last.get_attribute("data")
         url_pdf = f"https://appscvsgen.supercias.gob.ec{url_relativa}"
