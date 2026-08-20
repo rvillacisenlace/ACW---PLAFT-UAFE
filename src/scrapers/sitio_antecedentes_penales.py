@@ -191,8 +191,9 @@ class ScraperAntecedentesPenales(BaseScraper):
         try:
             boton = page.locator("a.cc-dismiss")
             boton.wait_for(state="visible", timeout=20000)
+            page.wait_for_timeout(3000)
             boton.click(force=True, timeout=8000)
-            self.delay_humano(0.5, 1.0)
+            self.delay_humano(0.5, 3.0)
             print("    [aviso cookies] cerrado correctamente")
         except Exception as e:
             print(f"    [aviso cookies] no se pudo cerrar automáticamente: {type(e).__name__}: {e}")
