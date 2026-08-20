@@ -32,6 +32,15 @@ def capturar_evidencia(
     nombre_archivo = f"evidencia_{sitio}_{timestamp_archivo}.png"
     ruta_archivo = os.path.join(carpeta, nombre_archivo)
 
+    # Forzar scroll al inicio absoluto antes de capturar - hipótesis:
+    # la inconsistencia de la barra fija superpuesta (a veces arriba,
+    # a veces a mitad de la captura) puede deberse a que el navegador
+    # no siempre empieza el proceso de captura por segmentos desde el
+    # mismo punto de scroll.
+    if pagina_completa:
+        page.evaluate("window.scrollTo(0, 0)")
+        page.wait_for_timeout(300)
+
     page.screenshot(path=ruta_archivo, full_page=pagina_completa)
 
     timestamp_legible = ahora.strftime("%Y-%m-%d %H:%M:%S")
