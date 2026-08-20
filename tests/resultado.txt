@@ -1,177 +1,77 @@
-PS C:\Users\villacisr\Desktop\Automatizacion_PLAF\Dev\ACW-PLAFT-UAFE> python -m src.main
+PS C:\Users\villacisr\Desktop\Automatizacion_PLAF\Dev\ACW-PLAFT-UAFE> Select-String -Path "src\scrapers\sitio_sercop_certificados.py" -Pattern "def _consultar_certificado" -Context 0,60
 
-======================================================================
-PROCESANDO CLIENTE: 1001322518 - Torres Gordillo Diego Patricio
-======================================================================
-
-[1001322518] OK - funcion_judicial
-[1001322518] OK - fiscalia
-[1001322518] OK - sentenciados
-[SRI - Consulta de RUC] Consultando con RUC: 1001322518001
-[1001322518] OK - sri_ruc
-C:\Users\villacisr\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\playwright_stealth\stealth.py:216: UserWarning: Stealth has already been applied to this page or context. Skipping duplicate application.
-  warnings.warn(
-[1001322518] OK - sri_deudas
-[1001322518] OK - sri_estado_tributario
-
-[1001322518] Preparando Antecedentes Penales - puede requerir captcha manual.
-Presiona ENTER cuando estés listo para continuar y resolver el captcha si aparece...
-    [aviso cookies] cerrado correctamente
-    [términos y condiciones] aceptados correctamente
-[1001322518] OK - antecedentes_penales
-[1001322518] OK - salud
-[1001322518] OK - iess
-
-============================================================
-CAPTCHA VISUAL - Se requiere intervención manual
-Escribe el código de la imagen en el campo del navegador.
-Tienes 120 segundos.
-Cuando termines, presiona ENTER aquí para continuar...
-============================================================
-
-Código ingresado - continuando automáticamente.
-
-[1001322518] OK - contraloria
-
-============================================================
-CAPTCHA VISUAL - Municipio de Quito
-Escribe el código de la imagen en el navegador.
-Cuando termines, presiona ENTER aquí para continuar...
-============================================================
-
-[1001322518] OK - municipio_quito
-[1001322518] OK - municipio_cuenca
-[1001322518] OK - municipio_ambato
-[1001322518] OK - municipio_esmeraldas
-
-============================================================
-CAPTCHA reCAPTCHA v2 - Municipio de Manta
-Resuelve el captcha en el navegador.
-Cuando termines, presiona ENTER aquí para continuar...
-============================================================
-
-
-============================================================
-CAPTCHA reCAPTCHA v2 - Municipio de Manta
-Resuelve el captcha en el navegador.
-Cuando termines, presiona ENTER aquí para continuar...
-============================================================
-
-[1001322518] OK - municipio_manta
-[1001322518] OK - sercop_proveedor
-[1001322518] OK - sercop_certificados
-
-======================================================================
-PROCESANDO CLIENTE: 0990014094001 - INDUAUTO S.A.
-======================================================================
-
-[0990014094001] OK - funcion_judicial
-[0990014094001] Sin resultados por razón social en Fiscalía, probando por RUC...
-[0990014094001] OK - fiscalia
-[0990014094001] OK - sentenciados
-[SRI - Consulta de RUC] Consultando con RUC: 0990014094001
-[0990014094001] OK - sri_ruc
-[0990014094001] OK - sri_deudas
-[0990014094001] OK - sri_estado_tributario
-[SRI - Consulta de RUC] Consultando con RUC: 0990014094001
-[SRI - Consulta de RUC] Consultando con RUC: 1714341672001
-[0990014094001] Representante legal resuelto: MOLESTINA AVEGNO XAVIER JOSE (1714341672)
-
-[0990014094001] Preparando Antecedentes Penales - puede requerir captcha manual.
-Presiona ENTER cuando estés listo para continuar y resolver el captcha si aparece...
-    [aviso cookies] no se pudo cerrar automáticamente: TimeoutError: Locator.wait_for: Timeout 20000ms exceeded.
-Call log:
-  - waiting for locator("a.cc-dismiss") to be visible
-    43 × locator resolved to hidden <a tabindex="0" role="button" class="cc-btn cc-dismiss" aria-label="dismiss cookie message">Aceptar!</a>
-
-    [términos y condiciones] aceptados correctamente
-[0990014094001] OK - antecedentes_penales
-[0990014094001] OK - salud
-[0990014094001] OK - iess
-
-============================================================
-CAPTCHA VISUAL - Se requiere intervención manual
-Escribe el código de la imagen en el campo del navegador.
-Tienes 120 segundos.
-Cuando termines, presiona ENTER aquí para continuar...
-============================================================
-
-Código ingresado - continuando automáticamente.
-
-[0990014094001] OK - contraloria
-[0990014094001] OK - scvs_companias
-
-============================================================
-CAPTCHA VISUAL - Municipio de Quito
-Escribe el código de la imagen en el navegador.
-Cuando termines, presiona ENTER aquí para continuar...
-============================================================
-
-[0990014094001] OK - municipio_quito
-[0990014094001] OK - municipio_cuenca
-[0990014094001] OK - municipio_ambato
-[0990014094001] OK - municipio_esmeraldas
-
-============================================================
-CAPTCHA reCAPTCHA v2 - Municipio de Manta
-Resuelve el captcha en el navegador.
-Cuando termines, presiona ENTER aquí para continuar...
-============================================================
+> src\scrapers\sitio_sercop_certificados.py:52:    def _consultar_certificado(self, page: Page, cliente: Cliente, 
+ruc_representante_legal: str, tipo_certificado: str) -> dict:
+  src\scrapers\sitio_sercop_certificados.py:53:        page.goto(self.url_base)
+  src\scrapers\sitio_sercop_certificados.py:54:        self.delay_humano(1.5, 2.5)
+  src\scrapers\sitio_sercop_certificados.py:55:
+  src\scrapers\sitio_sercop_certificados.py:56:        self._aceptar_cookies_si_aparece(page)
+  src\scrapers\sitio_sercop_certificados.py:57:
+  src\scrapers\sitio_sercop_certificados.py:58:        page.select_option("#cmbTipoCertificado", tipo_certificado)
+  src\scrapers\sitio_sercop_certificados.py:59:        self.delay_humano(0.5, 1.0)
+  src\scrapers\sitio_sercop_certificados.py:60:
+  src\scrapers\sitio_sercop_certificados.py:61:        tipo_persona_valor = (
+  src\scrapers\sitio_sercop_certificados.py:62:            TIPO_PERSONA_JURIDICA if cliente.tipo_persona == 
+TipoPersona.JURIDICA
+  src\scrapers\sitio_sercop_certificados.py:63:            else TIPO_PERSONA_NATURAL
+  src\scrapers\sitio_sercop_certificados.py:64:        )
+  src\scrapers\sitio_sercop_certificados.py:65:        page.select_option("#cmbTipoPersona", tipo_persona_valor)
+  src\scrapers\sitio_sercop_certificados.py:66:        self.delay_humano(0.5, 1.0)
+  src\scrapers\sitio_sercop_certificados.py:67:
+  src\scrapers\sitio_sercop_certificados.py:68:        ruc_a_consultar = (
+  src\scrapers\sitio_sercop_certificados.py:69:            cliente.identificacion if 
+len(cliente.identificacion.strip()) == 13
+  src\scrapers\sitio_sercop_certificados.py:70:            else f"{cliente.identificacion}001"
+  src\scrapers\sitio_sercop_certificados.py:71:        )
+  src\scrapers\sitio_sercop_certificados.py:72:        page.fill("#ruc", ruc_a_consultar)
+  src\scrapers\sitio_sercop_certificados.py:73:        self.delay_humano(0.5, 1.0)
+  src\scrapers\sitio_sercop_certificados.py:74:
+  src\scrapers\sitio_sercop_certificados.py:75:        if cliente.tipo_persona == TipoPersona.JURIDICA:
+  src\scrapers\sitio_sercop_certificados.py:76:            # Prioridad: primero cédula (10 dígitos) del representante
+  src\scrapers\sitio_sercop_certificados.py:77:            # legal; si SERCOP dice que no coincide con el RUC de la
+  src\scrapers\sitio_sercop_certificados.py:78:            # empresa según datos del SRI, se reintenta con el RUC
+  src\scrapers\sitio_sercop_certificados.py:79:            # derivado (+001) como respaldo.
+  src\scrapers\sitio_sercop_certificados.py:80:            cedula_representante = (
+  src\scrapers\sitio_sercop_certificados.py:81:                ruc_representante_legal[:10] if 
+len(ruc_representante_legal.strip()) == 13
+  src\scrapers\sitio_sercop_certificados.py:82:                else ruc_representante_legal
+  src\scrapers\sitio_sercop_certificados.py:83:            )
+  src\scrapers\sitio_sercop_certificados.py:84:            page.fill("#rucRepre", cedula_representante)
+  src\scrapers\sitio_sercop_certificados.py:85:            self.delay_humano(0.5, 1.0)
+  src\scrapers\sitio_sercop_certificados.py:86:
+  src\scrapers\sitio_sercop_certificados.py:87:        page.click("button:has-text('Buscar')")
+  src\scrapers\sitio_sercop_certificados.py:88:
+  src\scrapers\sitio_sercop_certificados.py:89:        try:
+  src\scrapers\sitio_sercop_certificados.py:90:            page.wait_for_function(
+  src\scrapers\sitio_sercop_certificados.py:91:                """() => {
+  src\scrapers\sitio_sercop_certificados.py:92:                    const texto = document.body.innerText;
+  src\scrapers\sitio_sercop_certificados.py:93:                    return texto.includes('ALERTA') || 
+texto.includes('Emitir Certificado') ||
+  src\scrapers\sitio_sercop_certificados.py:94:                           texto.includes('no está asociada con el 
+RUC ingresado');
+  src\scrapers\sitio_sercop_certificados.py:95:                }""",
+  src\scrapers\sitio_sercop_certificados.py:96:                timeout=15000,
+  src\scrapers\sitio_sercop_certificados.py:97:            )
+  src\scrapers\sitio_sercop_certificados.py:98:        except Exception:
+  src\scrapers\sitio_sercop_certificados.py:99:            print(f"    [{self.nombre_sitio}] Advertencia: no se 
+confirmó ningún resultado tras 15s (tipo {tipo_certificado}).")
+  src\scrapers\sitio_sercop_certificados.py:100:
+  src\scrapers\sitio_sercop_certificados.py:101:        self.delay_humano(1.0, 1.5)
+  src\scrapers\sitio_sercop_certificados.py:102:
+  src\scrapers\sitio_sercop_certificados.py:103:        # Reintento con RUC derivado si la cédula del representante 
+no
+  src\scrapers\sitio_sercop_certificados.py:104:        # coincidió según SERCOP/SRI.
+  src\scrapers\sitio_sercop_certificados.py:105:        if cliente.tipo_persona == TipoPersona.JURIDICA and "no está 
+asociada con el RUC ingresado" in page.content():
+  src\scrapers\sitio_sercop_certificados.py:106:            ruc_derivado_representante = (
+  src\scrapers\sitio_sercop_certificados.py:107:                ruc_representante_legal if 
+len(ruc_representante_legal.strip()) == 13
+  src\scrapers\sitio_sercop_certificados.py:108:                else f"{ruc_representante_legal}001"
+  src\scrapers\sitio_sercop_certificados.py:109:            )
+  src\scrapers\sitio_sercop_certificados.py:110:            print(f"    [{self.nombre_sitio}] Cédula del 
+representante no coincidió - reintentando con RUC derivado...")
+  src\scrapers\sitio_sercop_certificados.py:111:
+  src\scrapers\sitio_sercop_certificados.py:112:            page.goto(self.url_base)
 
 
-============================================================
-CAPTCHA reCAPTCHA v2 - Municipio de Manta
-Resuelve el captcha en el navegador.
-Cuando termines, presiona ENTER aquí para continuar...
-============================================================
-
-[0990014094001] OK - municipio_manta
-[0990014094001] OK - sercop_proveedor
-[0990014094001] OK - sercop_certificados
-
-======================================================================
-RESUMEN FINAL
-======================================================================
-
-Cliente 1001322518:
-  funcion_judicial: ✅ OK
-  fiscalia: ✅ OK
-  sentenciados: ✅ OK
-  sri_ruc: ✅ OK
-  sri_deudas: ✅ OK
-  sri_estado_tributario: ✅ OK
-  antecedentes_penales: ✅ OK
-  salud: ✅ OK
-  iess: ✅ OK
-  contraloria: ✅ OK
-  municipio_quito: ✅ OK
-  municipio_cuenca: ✅ OK
-  municipio_ambato: ✅ OK
-  municipio_esmeraldas: ✅ OK
-  municipio_manta: ✅ OK
-  sercop_proveedor: ✅ OK
-  sercop_certificados: ✅ OK
-
-Cliente 0990014094001:
-  funcion_judicial: ✅ OK
-  fiscalia: ✅ OK
-  sentenciados: ✅ OK
-  sri_ruc: ✅ OK
-  sri_deudas: ✅ OK
-  sri_estado_tributario: ✅ OK
-  cadena_representante_legal: ✅ OK
-  antecedentes_penales: ✅ OK
-  salud: ✅ OK
-  iess: ✅ OK
-  contraloria: ✅ OK
-  scvs_companias: ✅ OK
-  municipio_quito: ✅ OK
-  municipio_cuenca: ✅ OK
-  municipio_ambato: ✅ OK
-  municipio_esmeraldas: ✅ OK
-  municipio_manta: ✅ OK
-  sercop_proveedor: ✅ OK
-  sercop_certificados: ✅ OK
-
-Presiona ENTER para cerrar...
-PS C:\Users\villacisr\Desktop\Automatizacion_PLAF\Dev\ACW-PLAFT-UAFE>
+PS C:\Users\villacisr\Desktop\Automatizacion_PLAF\Dev\ACW-PLAFT-UAFE> 

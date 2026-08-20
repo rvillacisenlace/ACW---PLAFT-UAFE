@@ -50,58 +50,65 @@ class ScraperSERCOPCertificados(BaseScraper):
         }
 
     def _consultar_certificado(self, page: Page, cliente: Cliente, ruc_representante_legal: str, tipo_certificado: str) -> dict:
-        page.goto(self.url_base)
-        self.delay_humano(1.5, 2.5)
+        def _llenar_formulario_y_buscar(identificacion_representante: str) -> None:
+            page.goto(self.url_base)
+            self.delay_humano(1.5, 2.5)
 
-        self._aceptar_cookies_si_aparece(page)
+            self._aceptar_cookies_si_aparece(page)
 
-        page.select_option("#cmbTipoCertificado", tipo_certificado)
-        self.delay_humano(0.5, 1.0)
-
-        tipo_persona_valor = (
-            TIPO_PERSONA_JURIDICA if cliente.tipo_persona == TipoPersona.JURIDICA
-            else TIPO_PERSONA_NATURAL
-        )
-        page.select_option("#cmbTipoPersona", tipo_persona_valor)
-        self.delay_humano(0.5, 1.0)
-
-        ruc_a_consultar = (
-            cliente.identificacion if len(cliente.identificacion.strip()) == 13
-            else f"{cliente.identificacion}001"
-        )
-        page.fill("#ruc", ruc_a_consultar)
-        self.delay_humano(0.5, 1.0)
-
-        if cliente.tipo_persona == TipoPersona.JURIDICA:
-            # Prioridad: primero cédula (10 dígitos) del representante
-            # legal; si SERCOP dice que no coincide con el RUC de la
-            # empresa según datos del SRI, se reintenta con el RUC
-            # derivado (+001) como respaldo.
-            cedula_representante = (
-                ruc_representante_legal[:10] if len(ruc_representante_legal.strip()) == 13
-                else ruc_representante_legal
-            )
-            page.fill("#rucRepre", cedula_representante)
+            page.select_option("#cmbTipoCertificado", tipo_certificado)
             self.delay_humano(0.5, 1.0)
 
-        page.click("button:has-text('Buscar')")
-
-        try:
-            page.wait_for_function(
-                """() => {
-                    const texto = document.body.innerText;
-                    return texto.includes('ALERTA') || texto.includes('Emitir Certificado') ||
-                           texto.includes('no está asociada con el RUC ingresado');
-                }""",
-                timeout=15000,
+            tipo_persona_valor = (
+                TIPO_PERSONA_JURIDICA if cliente.tipo_persona == TipoPersona.JURIDICA
+                else TIPO_PERSONA_NATURAL
             )
-        except Exception:
-            print(f"    [{self.nombre_sitio}] Advertencia: no se confirmó ningún resultado tras 15s (tipo {tipo_certificado}).")
+            page.select_option("#cmbTipoPersona", tipo_persona_valor)
+            self.delay_humano(0.5, 1.0)
+
+            ruc_a_consultar = (
+                cliente.identificacion if len(cliente.identificacion.strip()) == 13
+                else f"{cliente.identificacion}001"
+            )
+            page.fill("#ruc", ruc_a_consultar)
+            self.delay_humano(0.5, 1.0)
+
+            if cliente.tipo_persona == TipoPersona.JURIDICA:
+                page.fill("#rucRepre", identificacion_representante)
+                self.delay_humano(0.5, 1.0)
+
+            page.click("button:has-text('Buscar')")
+
+        def _esperar_resultado() -> bool:
+            """Devuelve True si se confirmó algún resultado, False si venció el tiempo."""
+            try:
+                page.wait_for_function(
+                    """() => {
+                        const texto = document.body.innerText;
+                        return texto.includes('ALERTA') || texto.includes('Emitir Certificado') ||
+                               texto.includes('no está asociada con el RUC ingresado');
+                    }""",
+                    timeout=15000,
+                )
+                return True
+            except Exception:
+                return False
+
+        cedula_representante = (
+            ruc_representante_legal[:10] if len(ruc_representante_legal.strip()) == 13
+            else ruc_representante_legal
+        )
+
+        _llenar_formulario_y_buscar(cedula_representante)
+
+        if not _esperar_resultado():
+            print(f"    [{self.nombre_sitio}] Sin resultado tras 15s (tipo {tipo_certificado}) - recargando y reintentando...")
+            _llenar_formulario_y_buscar(cedula_representante)
+            if not _esperar_resultado():
+                print(f"    [{self.nombre_sitio}] Advertencia: sin resultado tras recargar y reintentar (tipo {tipo_certificado}).")
 
         self.delay_humano(1.0, 1.5)
 
-        # Reintento con RUC derivado si la cédula del representante no
-        # coincidió según SERCOP/SRI.
         if cliente.tipo_persona == TipoPersona.JURIDICA and "no está asociada con el RUC ingresado" in page.content():
             ruc_derivado_representante = (
                 ruc_representante_legal if len(ruc_representante_legal.strip()) == 13
@@ -109,34 +116,8 @@ class ScraperSERCOPCertificados(BaseScraper):
             )
             print(f"    [{self.nombre_sitio}] Cédula del representante no coincidió - reintentando con RUC derivado...")
 
-            page.goto(self.url_base)
-            self.delay_humano(1.5, 2.5)
-            self._aceptar_cookies_si_aparece(page)
-
-            page.select_option("#cmbTipoCertificado", tipo_certificado)
-            self.delay_humano(0.5, 1.0)
-            page.select_option("#cmbTipoPersona", TIPO_PERSONA_JURIDICA)
-            self.delay_humano(0.5, 1.0)
-
-            ruc_empresa = (
-                cliente.identificacion if len(cliente.identificacion.strip()) == 13
-                else f"{cliente.identificacion}001"
-            )
-            page.fill("#ruc", ruc_empresa)
-            self.delay_humano(0.5, 1.0)
-            page.fill("#rucRepre", ruc_derivado_representante)
-            self.delay_humano(0.5, 1.0)
-
-            page.click("button:has-text('Buscar')")
-            try:
-                page.wait_for_function(
-                    """() => {
-                        const texto = document.body.innerText;
-                        return texto.includes('ALERTA') || texto.includes('Emitir Certificado');
-                    }""",
-                    timeout=15000,
-                )
-            except Exception:
+            _llenar_formulario_y_buscar(ruc_derivado_representante)
+            if not _esperar_resultado():
                 print(f"    [{self.nombre_sitio}] Advertencia: reintento con RUC derivado tampoco confirmó resultado tras 15s.")
             self.delay_humano(1.0, 1.5)
 
@@ -178,8 +159,8 @@ class ScraperSERCOPCertificados(BaseScraper):
     def _descargar_certificado(self, page: Page, cliente: Cliente, tipo_certificado: str) -> tuple[bytes, str]:
         """
         Clic en "Emitir Certificado" dispara un alert() nativo, y luego
-        NAVEGA LA MISMA PÁGINA (no abre pestaña nueva, como se asumía
-        originalmente) hacia la vista con el PDF embebido en un iframe.
+        NAVEGA LA MISMA PÁGINA (no abre pestaña nueva) hacia la vista
+        con el PDF embebido en un iframe.
         """
         codigo_certificado = {"valor": ""}
 
