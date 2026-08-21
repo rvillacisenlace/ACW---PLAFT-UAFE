@@ -19,7 +19,6 @@ with sync_playwright() as p:
         nombres_completos="Torres Gordillo Diego Patricio",
     )
 
-    input("Presiona ENTER cuando estés listo para continuar y resolver el captcha si aparece...")
     resultado = scraper.buscar_cliente(page, cliente)
 
     print(f"\n{'='*60}")

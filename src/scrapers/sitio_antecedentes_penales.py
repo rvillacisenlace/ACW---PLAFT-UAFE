@@ -61,7 +61,6 @@ class ScraperAntecedentesPenales(BaseScraper):
         self,
         page: Page,
         tiempo_gracia_segundos: int = 8,
-        tiempo_espera_manual_segundos: int = 120,
     ) -> None:
         """
         Pausa manual incondicional (fix confirmado 2026-08-21).
@@ -83,11 +82,9 @@ class ScraperAntecedentesPenales(BaseScraper):
                 return  # camino feliz: no hizo falta intervenir
             page.wait_for_timeout(500)
 
-        # Periodo de gracia agotado sin avance. Intento opcional con
-        # 2Captcha (hoy pausado por decision de negocio - infra.captcha_api_key
-        # vacio - asi que este bloque no se ejecuta mientras eso siga asi).
+        # Periodo de gracia agotado sin avance. Intento opcional con 2Captcha.
         infra = cargar_infra_config()
-        if infra.captcha_api_key:
+        if infra.captcha_enabled and infra.captcha_api_key:
             print(f"[{self.nombre_sitio}] Posible hCaptcha - intentando resolver con 2Captcha...")
             try:
                 resolver_hcaptcha_con_2captcha(page, infra.captcha_api_key)
@@ -99,23 +96,13 @@ class ScraperAntecedentesPenales(BaseScraper):
             except CaptchaResolverError as e:
                 print(f"[{self.nombre_sitio}] 2Captcha falló: {e} - cayendo a manual...\n")
 
+        # Pausa manual explicita (consola), tal como pide la spec original.
         print(f"\n{'='*60}")
-        print(f"[{self.nombre_sitio}] La página no avanzó tras {tiempo_gracia_segundos}s.")
-        print("Puede haber un hCaptcha visible - resuélvelo manualmente en la ventana del navegador.")
+        print(f"[{self.nombre_sitio}] Posible hCaptcha detectado.")
         print(f"{'='*60}\n")
-
-        intervalos = tiempo_espera_manual_segundos // 3
-        for _ in range(intervalos):
-            page.wait_for_timeout(3000)
-            if self._pagina_avanzo_de_pantalla_inicial(page):
-                print(f"[{self.nombre_sitio}] Página desbloqueada - continuando automáticamente.\n")
-                return
-
-        raise ScraperError(
-            f"[{self.nombre_sitio}] La página no avanzó dentro del tiempo límite (posible hCaptcha sin resolver).",
-            resultado=ResultadoConsulta.ERROR_CAPTCHA,
-        )
-
+        input("Resuelve el captcha. Presiona ENTER cuando ya lo hayas resuelto...")
+        print(f"[{self.nombre_sitio}] Continuando...\n")
+        
     def _aceptar_terminos_si_aparece(self, page: Page) -> None:
         try:
             boton_aceptar = page.locator("button:has-text('Aceptar')")

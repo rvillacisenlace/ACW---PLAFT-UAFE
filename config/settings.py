@@ -47,6 +47,7 @@ def _requerido(nombre_var: str) -> str:
 class InfraConfig:
     captcha_api_key: str
     captcha_provider: str
+    captcha_enabled: bool
     ai_summary_api_key: str
     ai_summary_model: str
     ai_summary_enabled: bool
@@ -62,6 +63,7 @@ def cargar_infra_config() -> InfraConfig:
     return InfraConfig(
         captcha_api_key=os.getenv("CAPTCHA_API_KEY", ""),
         captcha_provider=os.getenv("CAPTCHA_PROVIDER", "2captcha"),
+        captcha_enabled=os.getenv("CAPTCHA_ENABLED", "false").strip().lower() == "true",
         ai_summary_api_key=os.getenv("AI_SUMMARY_API_KEY", ""),
         ai_summary_model=os.getenv("AI_SUMMARY_MODEL", ""),
         ai_summary_enabled=os.getenv("AI_SUMMARY_ENABLED", "false").strip().lower() == "true",

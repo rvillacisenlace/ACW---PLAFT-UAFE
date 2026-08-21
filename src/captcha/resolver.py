@@ -85,65 +85,49 @@ def resolver_con_2captcha(page: Page, api_key: str, tiempo_espera_segundos: int 
         boton_verificar.first.click()
         page.wait_for_timeout(2500)
 
-    
 def resolver_hcaptcha_con_2captcha(page: Page, api_key: str, tiempo_espera_segundos: int = 180) -> bool:
     """
-    Resuelve un hCaptcha (distinto de reCAPTCHA - servicio y API distintos)
-    usando 2Captcha. Extrae el sitekey del iframe de hCaptcha, resuelve,
-    inyecta el token, y dispara el callback esperado por hCaptcha.
+    Resuelve hCaptcha con 2Captcha. El sitio esta protegido por
+    Imperva Incapsula: cuando el WAF activa el desafio, el hCaptcha
+    completo (widget + textareas + callback JS) vive DENTRO de un
+    iframe anidado (src contiene "_Incapsula_Resource"), no en el
+    documento principal. Se busca ese frame primero; si no existe,
+    se usa la pagina principal como respaldo. Confirmado 2026-08-21.
     """
     if not api_key:
         raise CaptchaResolverError("CAPTCHA_API_KEY no está configurada en .env")
 
     solver = TwoCaptcha(api_key, defaultTimeout=tiempo_espera_segundos, pollingInterval=10)
 
-    # En vez de .first sobre un solo match (que puede agarrar un
-    # iframe hcaptcha equivocado si hay mas de uno, ej. checkbox vs
-    # challenge), se recorre cada candidato y se usa el primero que
-    # este realmente VISIBLE. Confirmado con evidencia real que
-    # .first puede fallar (2026-08-21).
-    candidatos = page.locator("iframe[src*='hcaptcha.com']")
-    iframe_hcaptcha = None
-    for i in range(candidatos.count()):
-        if candidatos.nth(i).is_visible():
-            iframe_hcaptcha = candidatos.nth(i)
-            break
-    if iframe_hcaptcha is None:
-        raise CaptchaResolverError(
-            f"No se encontró un iframe VISIBLE de hCaptcha ({candidatos.count()} candidatos en el DOM)"
-        )
+    frame = next((f for f in page.frames if "_Incapsula_Resource" in f.url), page.main_frame)
 
-    src_iframe = iframe_hcaptcha.get_attribute("src") or ""
-    site_key = None
-    for parte in src_iframe.split("&"):
-        if parte.startswith("sitekey="):
-            site_key = parte.split("=", 1)[1]
-            break
+    widget = frame.locator(".h-captcha[data-sitekey]").first
+    if widget.count() == 0:
+        raise CaptchaResolverError("No se encontró el widget de hCaptcha (data-sitekey)")
 
+    site_key = widget.get_attribute("data-sitekey")
     if not site_key:
-        raise CaptchaResolverError(
-            f"No se pudo extraer el sitekey del iframe de hCaptcha (src: {src_iframe[:200]})"
-        )
+        raise CaptchaResolverError("El widget de hCaptcha no tiene data-sitekey")
 
     try:
-        resultado = solver.hcaptcha(
-            sitekey=site_key,
-            url=page.url,
-        )
+        resultado = solver.hcaptcha(sitekey=site_key, url=page.url)
         token = resultado["code"]
     except Exception as e:
         raise CaptchaResolverError(f"2Captcha no pudo resolver el hCaptcha: {e}")
 
-    # hCaptcha usa un textarea con name="h-captcha-response" (equivalente
-    # al g-recaptcha-response de Google), y un segundo campo interno
-    # "g-recaptcha-response" también, por compatibilidad de algunas
-    # integraciones - se llenan ambos para máxima compatibilidad.
-    page.evaluate(
+    # Se invoca onCaptchaFinished directamente (el callback real del
+    # sitio, definido en ese mismo frame) en vez de solo rellenar
+    # textareas - hace el POST a Incapsula y recarga la pagina, igual
+    # que si el usuario lo hubiera resuelto a mano.
+    frame.evaluate(
         """(token) => {
-            const campos = document.querySelectorAll(
-                'textarea[name="h-captcha-response"], textarea[name="g-recaptcha-response"]'
-            );
-            campos.forEach(campo => { campo.innerHTML = token; campo.value = token; });
+            if (typeof onCaptchaFinished === 'function') {
+                onCaptchaFinished(token);
+            } else {
+                document.querySelectorAll(
+                    'textarea[name="h-captcha-response"], textarea[name="g-recaptcha-response"]'
+                ).forEach(c => { c.innerHTML = token; c.value = token; });
+            }
         }""",
         token,
     )
