@@ -122,6 +122,8 @@ class ScraperContraloria(BaseScraper):
                     })
 
             boton_siguiente = page.locator("#tblBusquedaResultados_next")
+            if boton_siguiente.count() == 0:
+                break  # no hay paginacion - una sola pagina de resultados
             clase_siguiente = boton_siguiente.get_attribute("class") or ""
             if "disabled" in clase_siguiente:
                 break  # no hay más páginas

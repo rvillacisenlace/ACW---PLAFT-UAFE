@@ -60,7 +60,7 @@ class ScraperAntecedentesPenales(BaseScraper):
     def _resolver_captcha_si_aparece(
         self,
         page: Page,
-        tiempo_gracia_segundos: int = 8,
+        tiempo_gracia_segundos: int = 5,
     ) -> None:
         """
         Pausa manual incondicional (fix confirmado 2026-08-21).
@@ -237,17 +237,24 @@ class ScraperAntecedentesPenales(BaseScraper):
 
     def _cerrar_aviso_cookies_si_aparece(self, page: Page) -> None:
         """
-        Cierra el aviso de cookies (librería "cookieconsent"). Usa
-        force=True porque el banner suele tener una animación de entrada
-        que puede interferir con la verificación de "clickeable" normal
-        de Playwright.
+        Cierra el aviso de cookies, si aparece. A partir del 2do
+        cliente en la misma sesion de navegador es NORMAL que este
+        aviso ya no aparezca (el sitio recuerda el consentimiento via
+        cookie del primer cliente) - eso no es un error. Se distingue
+        explicitamente de una falla real (aparecio pero no se pudo
+        cerrar) para no imprimir un warning enganoso.
         """
+        boton = page.locator("a.cc-dismiss")
         try:
-            boton = page.locator("a.cc-dismiss")
             boton.wait_for(state="visible", timeout=20000)
+        except Exception:
+            print("    [aviso cookies] no apareció (normal si ya se aceptó en esta sesión)")
+            return
+
+        try:
             page.wait_for_timeout(3000)
             boton.click(force=True, timeout=8000)
             self.delay_humano(0.5, 3.0)
             print("    [aviso cookies] cerrado correctamente")
         except Exception as e:
-            print(f"    [aviso cookies] no se pudo cerrar automáticamente: {type(e).__name__}: {e}")
+            print(f"    [aviso cookies] apareció pero no se pudo cerrar: {type(e).__name__}: {e}")

@@ -9,6 +9,7 @@ Búsqueda de Compañías (SCVS). Flujo confirmado con 5 pasos:
    un popup) -> recién ahí aparecen los datos de la empresa.
 """
 from playwright.sync_api import Page
+from pytest_playwright.pytest_playwright import page
 
 from src.scrapers.base_scraper import BaseScraper, ScraperError
 from src.core.models import Cliente, ResultadoConsulta, CompaniaSCVS
@@ -26,7 +27,7 @@ class ScraperSCVSCompanias(BaseScraper):
         return checkbox.count() > 0
 
     def buscar_cliente(self, page: Page, cliente: Cliente) -> CompaniaSCVS:
-        page.goto(self.url_base)
+        self.ejecutar_con_reintentos(page.goto, self.url_base)
         self.delay_humano(1.5, 2.5)
 
         # Seleccionar explícitamente el radio "R.U.C." - no asumir que
@@ -141,7 +142,20 @@ class ScraperSCVSCompanias(BaseScraper):
         """
         boton_generar = page.locator("button[title='Haga clic aquí para generar el certificado']")
         boton_generar.wait_for(state="visible", timeout=25000)
-        boton_generar.click(force=True)
+
+        # DIAGNOSTICO temporal: confirmar si el clic realmente dispara
+        # el AJAX de PrimeFaces o si nunca sale la petición.
+        peticion_disparada = {"si": False}
+        def _on_request(req):
+            if "j_idt854" in req.url or "frmInformacionCompanias" in req.url:
+                peticion_disparada["si"] = True
+                print(f"    [DIAGNOSTICO] peticion AJAX detectada: {req.url}")
+        page.on("request", _on_request)
+
+        boton_generar.click()  # SIN force=True, de prueba
+        page.wait_for_timeout(3000)
+        print(f"    [DIAGNOSTICO] se disparo la peticion del certificado: {peticion_disparada['si']}")
+        page.remove_listener("request", _on_request)
 
         # El diálogo muestra "Procesando..." antes de renderizar el
         # captcha real - se espera activamente (hasta 15s) en vez de un
@@ -151,7 +165,7 @@ class ScraperSCVSCompanias(BaseScraper):
             page.wait_for_selector(checkbox_selector, state="visible", timeout=30000)
         except Exception:
             raise ScraperError(
-                f"[{self.nombre_sitio}] El captcha del certificado no terminó de cargar tras 15s.",
+                f"[{self.nombre_sitio}] El captcha del certificado no terminó de cargar tras 30s.",
                 resultado=ResultadoConsulta.TIMEOUT,
             )
 

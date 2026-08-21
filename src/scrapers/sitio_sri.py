@@ -32,7 +32,7 @@ class ScraperSRI(BaseScraper):
         """
         Stealth().apply_stealth_sync(page)
         page.goto(self.url_base)
-        self.delay_humano(6.0, 9.0)
+        self.delay_humano(4.0, 6.0)
 
         for _ in range(3):
             x = random.randint(100, 800)

@@ -15,6 +15,7 @@ Cada llamada a un sitio está aislada con try/except - un fallo en un
 sitio NUNCA detiene el resto (principio de diseño confirmado).
 """
 from playwright.sync_api import sync_playwright
+from playwright_stealth import Stealth
 
 from src.core.models import Cliente, TipoPersona
 
@@ -123,8 +124,6 @@ def procesar_cliente(page, cliente: Cliente) -> dict:
     # TODO: agregar scvs_personas aquí cuando el scraper esté listo
 
     # --- 7. Antecedentes Penales (persona: cliente o representante) ---
-    print(f"\n[{cliente.identificacion}] Preparando Antecedentes Penales - puede requerir captcha manual.")
-    input("Presiona ENTER cuando estés listo para continuar y resolver el captcha si aparece...")
     _ejecutar("antecedentes_penales", lambda: ScraperAntecedentesPenales(context=page.context, url_base=URLS["antecedentes_penales"]).buscar_cliente(page, cliente_para_persona))
 
     # --- 8. Sentenciados ---
@@ -149,6 +148,7 @@ def main():
         browser = p.chromium.launch(headless=False, slow_mo=200, channel="chrome")
         context = browser.new_context(ignore_https_errors=True)
         page = context.new_page()
+        Stealth().apply_stealth_sync(page)
 
         resumen_final = {}
         for cliente in clientes_prueba:
