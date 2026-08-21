@@ -5,6 +5,8 @@ Certificado de Antecedentes Penales (Ministerio del Interior). Flujo de
 varios pasos con hCaptcha (no reCAPTCHA), aceptación de términos, y un
 asistente de 2 pantallas (cédula -> motivo de consulta -> resultado).
 """
+import time
+
 from playwright.sync_api import Page
 
 from src.scrapers.base_scraper import BaseScraper, ScraperError
@@ -21,44 +23,96 @@ class ScraperAntecedentesPenales(BaseScraper):
     nombre_sitio = "Antecedentes Penales"
 
     def tiene_captcha(self, page: Page) -> bool:
+        """
+        Metodo requerido por el contrato de BaseScraper. OJO: se
+        confirmo con evidencia real (diagnostico 2026-08-21,
+        log_20260821_095119.json) que este chequeo puede devolver
+        False mientras el hCaptcha esta realmente visible y
+        bloqueando - el usuario resolvio un captcha real en pantalla
+        durante ~17s sin que este metodo lo detectara ni una vez. Por
+        eso ya NO se usa para decidir si pausar (ver
+        _pagina_avanzo_de_pantalla_inicial). Se deja el metodo por
+        compatibilidad con la interfaz abstracta y como dato
+        informativo en logs, no como fuente de verdad.
+        """
         iframe_hcaptcha = page.locator("iframe[src*='hcaptcha.com']")
         return iframe_hcaptcha.count() > 0 and iframe_hcaptcha.first.is_visible()
 
-    def _resolver_captcha_si_aparece(self, page: Page, tiempo_espera_segundos: int = 120) -> None:
+    def _pagina_avanzo_de_pantalla_inicial(self, page: Page) -> bool:
         """
-        El hCaptcha no siempre aparece. Si aparece, se intenta resolver
-        automáticamente con 2Captcha; si falla, se cae a pausa manual.
+        Senal confiable (validada con 5 corridas reales) de que ya no
+        estamos atascados en la pantalla inicial: aparecio el aviso
+        de cookies, el modal de terminos, o el formulario real
+        (#cmbEcuatoriano). A diferencia de tiene_captcha(), esta senal
+        no depende de detectar el hCaptcha en si - solo confirma que
+        la pagina siguio adelante, sea porque nunca hubo captcha o
+        porque ya se resolvio.
         """
-        if not self.tiene_captcha(page):
-            return
+        cookies = page.locator("a.cc-dismiss")
+        terminos = page.locator("button:has-text('Aceptar')")
+        formulario = page.locator("#cmbEcuatoriano")
+        return (
+            (cookies.count() > 0 and cookies.first.is_visible())
+            or (terminos.count() > 0 and terminos.first.is_visible())
+            or (formulario.count() > 0 and formulario.first.is_visible())
+        )
 
+    def _resolver_captcha_si_aparece(
+        self,
+        page: Page,
+        tiempo_gracia_segundos: int = 8,
+        tiempo_espera_manual_segundos: int = 120,
+    ) -> None:
+        """
+        Pausa manual incondicional (fix confirmado 2026-08-21).
+
+        Ya NO se decide si pausar en base a tiene_captcha() - ese
+        chequeo tiene falsos negativos confirmados con evidencia real
+        (ver docstring de tiene_captcha). En su lugar: se da un
+        periodo de gracia corto para que la pagina avance por si sola
+        (camino feliz, sin captcha - el caso mas comun segun las
+        corridas de diagnostico). Si no avanza en ese tiempo, se
+        asume INCONDICIONALMENTE - sin importar lo que diga
+        tiene_captcha() - que algo requiere intervencion manual
+        (tipicamente el hCaptcha) y se pausa hasta resolucion o
+        timeout.
+        """
+        inicio = time.monotonic()
+        while time.monotonic() - inicio < tiempo_gracia_segundos:
+            if self._pagina_avanzo_de_pantalla_inicial(page):
+                return  # camino feliz: no hizo falta intervenir
+            page.wait_for_timeout(500)
+
+        # Periodo de gracia agotado sin avance. Intento opcional con
+        # 2Captcha (hoy pausado por decision de negocio - infra.captcha_api_key
+        # vacio - asi que este bloque no se ejecuta mientras eso siga asi).
         infra = cargar_infra_config()
         if infra.captcha_api_key:
-            print(f"[{self.nombre_sitio}] hCaptcha detectado - intentando resolver con 2Captcha...")
+            print(f"[{self.nombre_sitio}] Posible hCaptcha - intentando resolver con 2Captcha...")
             try:
                 resolver_hcaptcha_con_2captcha(page, infra.captcha_api_key)
                 page.wait_for_timeout(2000)
-                if not self.tiene_captcha(page):
+                if self._pagina_avanzo_de_pantalla_inicial(page):
                     print(f"[{self.nombre_sitio}] hCaptcha resuelto automáticamente.\n")
                     return
-                print(f"[{self.nombre_sitio}] 2Captcha no logró pasar la validación - cayendo a manual...\n")
+                print(f"[{self.nombre_sitio}] 2Captcha no logró destrabar la página - cayendo a manual...\n")
             except CaptchaResolverError as e:
                 print(f"[{self.nombre_sitio}] 2Captcha falló: {e} - cayendo a manual...\n")
 
         print(f"\n{'='*60}")
-        print("HCAPTCHA DETECTADO - Se requiere intervención manual")
-        print(f"Resuelve el captcha en la ventana del navegador ahora.")
+        print(f"[{self.nombre_sitio}] La página no avanzó tras {tiempo_gracia_segundos}s.")
+        print("Puede haber un hCaptcha visible - resuélvelo manualmente en la ventana del navegador.")
         print(f"{'='*60}\n")
 
-        intervalos = tiempo_espera_segundos // 3
+        intervalos = tiempo_espera_manual_segundos // 3
         for _ in range(intervalos):
             page.wait_for_timeout(3000)
-            if not self.tiene_captcha(page):
-                print("Captcha resuelto - continuando automáticamente.\n")
+            if self._pagina_avanzo_de_pantalla_inicial(page):
+                print(f"[{self.nombre_sitio}] Página desbloqueada - continuando automáticamente.\n")
                 return
 
         raise ScraperError(
-            f"[{self.nombre_sitio}] hCaptcha sin resolución dentro del tiempo límite.",
+            f"[{self.nombre_sitio}] La página no avanzó dentro del tiempo límite (posible hCaptcha sin resolver).",
             resultado=ResultadoConsulta.ERROR_CAPTCHA,
         )
 
@@ -66,7 +120,14 @@ class ScraperAntecedentesPenales(BaseScraper):
         try:
             boton_aceptar = page.locator("button:has-text('Aceptar')")
             boton_aceptar.first.wait_for(state="visible", timeout=15000)
-            boton_aceptar.first.click(force=True, timeout=8000)
+            # SIN force=True: el dialogo de jQuery UI necesita
+            # estabilizarse (dejar de reposicionarse/animarse) antes
+            # del clic real. force=True clickeaba en la coordenada
+            # equivocada mientras aun se movia, reportando "exito"
+            # sin que el modal se cerrara de verdad. Confirmado con
+            # evidencia real (4/4 corridas limpias sin force=True:
+            # logs 101001, 101301, 101343, 101417 del 2026-08-21).
+            boton_aceptar.first.click(timeout=8000)
             self.delay_humano(0.5, 1.0)
             print("    [términos y condiciones] aceptados correctamente")
         except Exception as e:
@@ -76,12 +137,18 @@ class ScraperAntecedentesPenales(BaseScraper):
         page.goto(self.url_base)
         self.delay_humano(1.5, 2.5)
 
-        # Aviso de cookies (aparece antes que el resto) - intento
-        # genérico con textos comunes, defensivo (no falla si no aparece)
-        self._cerrar_aviso_cookies_si_aparece(page)
-
-        # Paso 1: hCaptcha (si aparece, antes que nada más)
+        # Paso 1: hCaptcha (si aparece, antes que nada más - el resto
+        # de elementos no se renderiza hasta que esto se resuelva).
+        # Nota: con la pausa incondicional este orden ya no es
+        # necesario para la correctitud (el fix espera/pausa igual
+        # sin importar el orden), pero evita que el siguiente paso
+        # (cookies) pierda hasta 20s esperando un banner que todavía
+        # no puede aparecer mientras el captcha bloquea la página.
         self._resolver_captcha_si_aparece(page)
+
+        # Aviso de cookies - intento genérico con textos comunes,
+        # defensivo (no falla si no aparece)
+        self._cerrar_aviso_cookies_si_aparece(page)
 
         # Paso 2: aceptar términos y condiciones
         self._aceptar_terminos_si_aparece(page)

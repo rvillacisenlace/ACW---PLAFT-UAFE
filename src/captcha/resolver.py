@@ -97,9 +97,21 @@ def resolver_hcaptcha_con_2captcha(page: Page, api_key: str, tiempo_espera_segun
 
     solver = TwoCaptcha(api_key, defaultTimeout=tiempo_espera_segundos, pollingInterval=10)
 
-    iframe_hcaptcha = page.locator("iframe[src*='hcaptcha.com']").first
-    if iframe_hcaptcha.count() == 0:
-        raise CaptchaResolverError("No se encontró el iframe de hCaptcha en la página")
+    # En vez de .first sobre un solo match (que puede agarrar un
+    # iframe hcaptcha equivocado si hay mas de uno, ej. checkbox vs
+    # challenge), se recorre cada candidato y se usa el primero que
+    # este realmente VISIBLE. Confirmado con evidencia real que
+    # .first puede fallar (2026-08-21).
+    candidatos = page.locator("iframe[src*='hcaptcha.com']")
+    iframe_hcaptcha = None
+    for i in range(candidatos.count()):
+        if candidatos.nth(i).is_visible():
+            iframe_hcaptcha = candidatos.nth(i)
+            break
+    if iframe_hcaptcha is None:
+        raise CaptchaResolverError(
+            f"No se encontró un iframe VISIBLE de hCaptcha ({candidatos.count()} candidatos en el DOM)"
+        )
 
     src_iframe = iframe_hcaptcha.get_attribute("src") or ""
     site_key = None
