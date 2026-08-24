@@ -106,7 +106,7 @@ class ScraperAntecedentesPenales(BaseScraper):
             except CaptchaResolverError as e:
                 print(f"[{self.nombre_sitio}] 2Captcha falló: {e} - cayendo a manual...\n")
 
-        # Pausa manual explicita (consola), tal como pide la spec original.
+        # Pausa manual explicita (consola)
         print(f"\n{'='*60}")
         print(f"[{self.nombre_sitio}] Posible hCaptcha detectado.")
         print(f"{'='*60}\n")

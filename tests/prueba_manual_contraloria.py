@@ -10,7 +10,7 @@ with sync_playwright() as p:
     page = context.new_page()
 
     scraper = ScraperContraloria(context=context, url_base=URL_CONTRALORIA)
-    cliente = Cliente(identificacion="0801639360", tipo_persona=TipoPersona.NATURAL, nombres_completos="Villacis Quintero Rommel Federico")
+    cliente = Cliente(identificacion="0850513433", tipo_persona=TipoPersona.NATURAL, nombres_completos="Villacis Olivo Rommel Joerick")
 
     resultados = scraper.buscar_cliente(page, cliente)
     print(f"\nTotal de resultados: {len(resultados)}")

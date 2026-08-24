@@ -12,7 +12,7 @@ from playwright.sync_api import Page
 from src.scrapers.base_scraper import BaseScraper, ScraperError
 from src.core.models import Cliente, ResultadoConsulta, TipoPersona
 from config.settings import cargar_infra_config
-
+from src.captcha.resolver import resolver_captcha_imagen_con_2captcha, CaptchaResolverError
 
 class ScraperContraloria(BaseScraper):
     nombre_sitio = "Contraloría - Declaraciones Juradas"
@@ -55,16 +55,19 @@ class ScraperContraloria(BaseScraper):
 
     def _resolver_captcha_visual(self, page: Page) -> None:
         """
-        DECISIÓN DE NEGOCIO (pendiente de aprobación de presupuesto):
-        todos los captchas de este proyecto se resuelven MANUALMENTE por
-        ahora, no vía 2Captcha - se implementará la resolución automática
-        de pago una vez aprobado el gasto correspondiente.
-
-        Pausa hasta 2 minutos esperando que la persona escriba el código
-        manualmente en el campo #x y presione Enter o haga clic en
-        Buscar - se detecta que ya se resolvió cuando el campo #x deja
-        de estar vacío.
+        Intenta resolver el captcha de imagen automaticamente con
+        2Captcha; si falla o no esta habilitado, cae a pausa manual.
         """
+        infra = cargar_infra_config()
+        if infra.captcha_enabled and infra.captcha_api_key:
+            try:
+                resolver_captcha_imagen_con_2captcha(page, infra.captcha_api_key, "#captcha", "#x")
+                if page.locator("#x").input_value().strip():
+                    print(f"[{self.nombre_sitio}] Captcha de imagen resuelto automáticamente.\n")
+                    self.delay_humano(0.5, 1.0)
+                    return
+            except CaptchaResolverError as e:
+                print(f"[{self.nombre_sitio}] 2Captcha falló: {e} - cayendo a manual...\n")
         print(f"\n{'='*60}")
         print(f"CAPTCHA VISUAL - Se requiere intervención manual")
         print(f"Escribe el código de la imagen en el campo del navegador.")
