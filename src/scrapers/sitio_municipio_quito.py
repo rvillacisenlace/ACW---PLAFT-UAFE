@@ -1,15 +1,16 @@
 """
 Municipio de Quito - Consulta de valores pendientes de pago.
 Búsqueda por Apellidos y Nombres / Razón social (NO cédula/RUC).
-Captcha de imagen - resolución MANUAL (2Captcha pausado en todo el
-proyecto hasta aprobación de presupuesto).
+Captcha de imagen (Telerik, generado por servidor) - resolución
+automática vía 2Captcha, con respaldo manual si falla.
 """
 from playwright.sync_api import Page
 
 from src.scrapers.base_scraper import BaseScraper, ScraperError
-from src.core.models import Cliente, ResultadoConsulta, TipoPersona
-from src.documentos.evidencia import capturar_evidencia
 from src.core.models import Cliente, ResultadoConsulta, DeudaMunicipal, TipoPersona
+from src.documentos.evidencia import capturar_evidencia
+from src.captcha.resolver import resolver_captcha_imagen_con_2captcha, CaptchaResolverError
+from config.settings import cargar_infra_config
 
 class ScraperMunicipioQuito(BaseScraper):
     nombre_sitio = "Municipio de Quito"
@@ -78,6 +79,19 @@ class ScraperMunicipioQuito(BaseScraper):
         return self._extraer_resultado(page, cliente)
 
     def _resolver_captcha_manual(self, page: Page) -> None:
+        infra = cargar_infra_config()
+        if infra.captcha_enabled and infra.captcha_api_key:
+            try:
+                resolver_captcha_imagen_con_2captcha(
+                    page, infra.captcha_api_key,
+                    "#TcOpciones_TbpApellidosNombres_RcApellidosNombres_CaptchaImage",
+                    "#TcOpciones_TbpApellidosNombres_TxtCaptchaApellidosNombres",
+                )
+                print(f"[{self.nombre_sitio}] Captcha resuelto automáticamente.\n")
+                return
+            except CaptchaResolverError as e:
+                print(f"[{self.nombre_sitio}] 2Captcha falló: {e} - cayendo a manual...\n")
+
         print(f"\n{'='*60}")
         print(f"CAPTCHA VISUAL - {self.nombre_sitio}")
         print(f"Escribe el código de la imagen en el navegador.")

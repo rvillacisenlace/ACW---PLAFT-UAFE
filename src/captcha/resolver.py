@@ -151,15 +151,21 @@ def resolver_captcha_imagen_con_2captcha(
     if not api_key:
         raise CaptchaResolverError("CAPTCHA_API_KEY no está configurada en .env")
 
+    import base64
+
     imagen = page.locator(selector_imagen)
     if imagen.count() == 0:
         raise CaptchaResolverError(f"No se encontró la imagen del captcha ({selector_imagen})")
 
-    src = imagen.get_attribute("src") or ""
-    if "base64," not in src:
-        raise CaptchaResolverError("El src de la imagen del captcha no contiene datos base64")
+    # Screenshot del elemento en vez de leer el atributo src - funciona
+    # igual si la imagen viene embebida en base64 (Contraloria) o
+    # generada dinamicamente por el servidor via URL (Quito/Telerik).
+    try:
+        bytes_imagen = imagen.first.screenshot()
+    except Exception as e:
+        raise CaptchaResolverError(f"No se pudo capturar la imagen del captcha: {e}")
 
-    datos_base64 = src.split("base64,", 1)[1]
+    datos_base64 = base64.b64encode(bytes_imagen).decode("ascii")
 
     solver = TwoCaptcha(api_key, defaultTimeout=tiempo_espera_segundos, pollingInterval=5)
     try:
