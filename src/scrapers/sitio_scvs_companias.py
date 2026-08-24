@@ -142,21 +142,7 @@ class ScraperSCVSCompanias(BaseScraper):
         """
         boton_generar = page.locator("button[title='Haga clic aquí para generar el certificado']")
         boton_generar.wait_for(state="visible", timeout=25000)
-
-        # DIAGNOSTICO temporal: confirmar si el clic realmente dispara
-        # el AJAX de PrimeFaces o si nunca sale la petición.
-        peticion_disparada = {"si": False}
-        def _on_request(req):
-            if "j_idt854" in req.url or "frmInformacionCompanias" in req.url:
-                peticion_disparada["si"] = True
-                print(f"    [DIAGNOSTICO] peticion AJAX detectada: {req.url}")
-        page.on("request", _on_request)
-
-        boton_generar.click()  # SIN force=True, de prueba
-        page.wait_for_timeout(3000)
-        print(f"    [DIAGNOSTICO] se disparo la peticion del certificado: {peticion_disparada['si']}")
-        page.remove_listener("request", _on_request)
-
+        boton_generar.click()
         # El diálogo muestra "Procesando..." antes de renderizar el
         # captcha real - se espera activamente (hasta 15s) en vez de un
         # delay fijo, que resultó insuficiente.
