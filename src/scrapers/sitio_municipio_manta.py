@@ -1,7 +1,7 @@
 """
 Municipio de Manta - Consulta de deudas (Rentas, Predios, EPAM).
 Selector de tipo de búsqueda -> Cédula/RUC/Pasaporte, reCAPTCHA v2
-(resolución MANUAL, 2Captcha pausado en todo el proyecto).
+(resolución automática vía 2Captcha, con respaldo manual si falla).
 
 Confirmado que cédula y RUC devuelven el mismo valor - no se necesita
 lógica de combinación como en Ambato/Esmeraldas, basta un solo intento
@@ -12,6 +12,8 @@ from playwright.sync_api import Page
 from src.scrapers.base_scraper import BaseScraper, ScraperError
 from src.core.models import Cliente, ResultadoConsulta, DeudaMunicipal
 from src.documentos.evidencia import capturar_evidencia
+from src.captcha.resolver import resolver_con_2captcha, CaptchaResolverError
+from config.settings import cargar_infra_config
 
 
 class ScraperMunicipioManta(BaseScraper):
@@ -82,6 +84,15 @@ class ScraperMunicipioManta(BaseScraper):
             return 0.0
 
     def _resolver_captcha_manual(self, page: Page) -> None:
+        infra = cargar_infra_config()
+        if infra.captcha_enabled and infra.captcha_api_key:
+            try:
+                resolver_con_2captcha(page, infra.captcha_api_key)
+                print(f"[{self.nombre_sitio}] reCAPTCHA resuelto automáticamente.\n")
+                return
+            except CaptchaResolverError as e:
+                print(f"[{self.nombre_sitio}] 2Captcha falló: {e} - cayendo a manual...\n")
+
         print(f"\n{'='*60}")
         print(f"CAPTCHA reCAPTCHA v2 - {self.nombre_sitio}")
         print(f"Resuelve el captcha en el navegador.")
