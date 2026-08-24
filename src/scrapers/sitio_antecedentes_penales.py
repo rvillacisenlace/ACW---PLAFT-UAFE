@@ -88,8 +88,18 @@ class ScraperAntecedentesPenales(BaseScraper):
             print(f"[{self.nombre_sitio}] Posible hCaptcha - intentando resolver con 2Captcha...")
             try:
                 resolver_hcaptcha_con_2captcha(page, infra.captcha_api_key)
-                page.wait_for_timeout(2000)
-                if self._pagina_avanzo_de_pantalla_inicial(page):
+                # El callback real (onCaptchaFinished -> POST a Incapsula ->
+                # recarga de pagina) puede tardar mas de 2s. Se sondea en
+                # vez de chequear una sola vez con tiempo fijo - confirmado
+                # que un solo chequeo a los 2s da falso negativo aunque
+                # 2Captcha si resolvio correctamente (evidencia real 2026-08-24).
+                resuelto = False
+                for _ in range(10):
+                    page.wait_for_timeout(1000)
+                    if self._pagina_avanzo_de_pantalla_inicial(page):
+                        resuelto = True
+                        break
+                if resuelto:
                     print(f"[{self.nombre_sitio}] hCaptcha resuelto automáticamente.\n")
                     return
                 print(f"[{self.nombre_sitio}] 2Captcha no logró destrabar la página - cayendo a manual...\n")

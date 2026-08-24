@@ -8,6 +8,8 @@ _resolver_captcha_manual en sitio1_funcion_judicial.py).
 from twocaptcha import TwoCaptcha
 from playwright.sync_api import Page
 
+import truststore
+truststore.inject_into_ssl()
 
 class CaptchaResolverError(Exception):
     """Error específico al intentar resolver el captcha vía 2Captcha."""

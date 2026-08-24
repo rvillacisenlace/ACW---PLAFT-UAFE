@@ -163,7 +163,7 @@ def main():
         for identificacion, resultados in resumen_final.items():
             print(f"\nCliente {identificacion}:")
             for sitio, resultado in resultados.items():
-                estado = "❌ REVISIÓN MANUAL" if isinstance(resultado, dict) and resultado.get("requiere_revision_manual") else "✅ OK"
+                estado = "REVISIÓN MANUAL" if isinstance(resultado, dict) and resultado.get("requiere_revision_manual") else "OK"
                 print(f"  {sitio}: {estado}")
 
         input("\nPresiona ENTER para cerrar...")

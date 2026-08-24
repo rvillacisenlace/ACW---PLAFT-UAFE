@@ -10,7 +10,7 @@ with sync_playwright() as p:
     page = context.new_page()
 
     scraper = ScraperSRIDeudas(context=context, url_base=URL_SRI_DEUDAS)
-    cliente = Cliente(identificacion="1001322518", tipo_persona=TipoPersona.NATURAL, nombres_completos="Torres Gordillo Diego Patricio")
+    cliente = Cliente(identificacion="1714337738", tipo_persona=TipoPersona.NATURAL, nombres_completos="ANDRADE ZARATE JUAN ANDRES")
 
     resultado = scraper.consultar_deudas(page, cliente)
     print(f"\n¿Tiene deuda firme?: {resultado.tiene_deuda_firme}")
