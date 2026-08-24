@@ -8,8 +8,8 @@ main.py solo debe conocer la interfaz ExcelWriter, nunca la implementación.
 """
 from abc import ABC, abstractmethod
 from openpyxl import load_workbook
-from copy import copy
 from openpyxl.styles import Font, Alignment
+
 
 class ExcelWriter(ABC):
     @abstractmethod
@@ -47,12 +47,58 @@ class LocalExcelWriter(ExcelWriter):
     """
     FILA_INICIO_DATOS = 4
 
+    ESTILO_FUENTE = Font(name="Book Antiqua", size=11)
+    ESTILO_ALINEACION = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    # Columnas del bloque SRI-cliente (14-21) - hardcodeadas por indice
+    # porque sus nombres de columna se repiten identicos en el bloque
+    # de representante legal (22-29) y _col() por nombre resolveria mal
+    # (el diccionario de mapa_columnas no distingue duplicados).
+    COL_SRI_RAZON_SOCIAL = 14
+    COL_SRI_ESTADO_CONTRIBUYENTE = 15
+    COL_SRI_FECHA_INICIO = 16
+    COL_SRI_FECHA_CESE = 17
+    COL_SRI_FECHA_REINICIO = 18
+    COL_SRI_CONTRIBUYENTE_FANTASMA = 19
+    COL_SRI_TRANSACCIONES_INEXISTENTES = 20
+    COL_SRI_ACTIVIDAD_ECONOMICA = 21
+
+    # Bloque SRI-representante-legal (22-29) - mismo motivo de indices
+    # directos que el bloque anterior. OJO: el orden de campos aqui es
+    # distinto al bloque del cliente (actividad economica va antes que
+    # fantasma/transacciones, no al final).
+    COL_SRI_RL_RAZON_SOCIAL = 22
+    COL_SRI_RL_ESTADO_CONTRIBUYENTE = 23
+    COL_SRI_RL_FECHA_INICIO = 24
+    COL_SRI_RL_FECHA_CESE = 25
+    COL_SRI_RL_FECHA_REINICIO = 26
+    COL_SRI_RL_ACTIVIDAD_ECONOMICA = 27
+    COL_SRI_RL_CONTRIBUYENTE_FANTASMA = 28
+    COL_SRI_RL_TRANSACCIONES_INEXISTENTES = 29
+
     def __init__(self, ruta_excel: str, nombre_hoja: str = "Revision"):
         self.ruta_excel = ruta_excel
         self.nombre_hoja = nombre_hoja
         self.wb = load_workbook(ruta_excel)
         self.hoja = self.wb[nombre_hoja]
         self.mapa_columnas = self._construir_mapa_columnas(self.hoja)
+
+        # Mitigacion de un bug conocido de openpyxl: wb.save() CIERRA el
+        # stream interno de cada imagen embebida al terminar de guardar.
+        # Un segundo guardado en el mismo proceso falla con "I/O
+        # operation on closed file" porque no hay como releer un stream
+        # ya cerrado. Se capturan los bytes crudos UNA SOLA VEZ aqui,
+        # mientras los streams siguen frescos tras la carga, y cada
+        # guardado posterior arma un BytesIO nuevo desde esa copia en
+        # memoria - nunca depende de releer un stream ya usado.
+        # Confirmado con evidencia real: 5/5 guardados seguidos en el
+        # mismo proceso, antes fallaba siempre en el 2do.
+        import io
+        self._imagenes_bytes_originales = []
+        for hoja_wb in self.wb.worksheets:
+            for img in getattr(hoja_wb, "_images", []):
+                img.ref.seek(0)
+                self._imagenes_bytes_originales.append((img, img.ref.read()))
 
     def _construir_mapa_columnas(self, hoja) -> dict:
         """
@@ -77,6 +123,12 @@ class LocalExcelWriter(ExcelWriter):
         if nombre_columna not in self.mapa_columnas:
             raise KeyError(f"Columna '{nombre_columna}' no encontrada en la hoja '{self.nombre_hoja}'")
         return self.mapa_columnas[nombre_columna]
+
+    def _escribir_valor_con_estilo(self, fila: int, col: int, valor) -> None:
+        celda = self.hoja.cell(row=fila, column=col)
+        celda.value = valor
+        celda.font = self.ESTILO_FUENTE
+        celda.alignment = self.ESTILO_ALINEACION
 
     def leer_clientes_pendientes(self, nombre_hoja: str = None) -> list:
         """
@@ -124,63 +176,7 @@ class LocalExcelWriter(ExcelWriter):
             if len(fila) >= 2 and fila[0]:
                 parametros[fila[0]] = fila[1]
         return parametros
-
-    ESTILO_FUENTE = Font(name="Book Antiqua", size=11)
-    ESTILO_ALINEACION = Alignment(horizontal="center", vertical="center")
-
-    def _escribir_valor_con_estilo(self, fila: int, col: int, valor) -> None:
-        celda = self.hoja.cell(row=fila, column=col)
-        celda.value = valor
-        celda.font = self.ESTILO_FUENTE
-        celda.alignment = self.ESTILO_ALINEACION
-
-    def escribir_antecedentes_penales(self, fila_excel: int, posee_antecedentes: bool) -> None:
-        col = self._col("Posee antecedentes penales")
-        self._escribir_valor_con_estilo(fila_excel, col, "SI" if posee_antecedentes else "NO")
-
-    def actualizar_estado_cliente(self, fila_excel: int, estado: str, detalle: str = "") -> None:
-        col = self._col("ESTADO")
-        self._escribir_valor_con_estilo(fila_excel, col, estado)
-        # NOTA: 'detalle' no se escribe - no existe una columna de detalle
-        # libre en la estructura real de 'Revision'. Si se necesita
-        # guardar detalle en algun lado, definir en que columna del
-        # mapeo real deberia ir (pendiente de confirmar).
-
-    def escribir_detalle_procesos(self, cliente, procesos_judiciales: list, denuncias: list) -> None:
-        # PENDIENTE - ROTO DESDE ANTES DE HOY, fuera de alcance de esta
-        # sesion (no lo necesita Antecedentes Penales). Llama a
-        # self._asegurar_hoja_existe / self._obtener_ultima_fila /
-        # self._escribir_filas_batch, que solo existen en GraphAPIWriter,
-        # nunca se definieron aqui en LocalExcelWriter. No usar todavia.
-        raise NotImplementedError(
-            "escribir_detalle_procesos no esta implementado en LocalExcelWriter "
-            "(depende de metodos que solo existen en GraphAPIWriter) - pendiente."
-        )
-
-    def escribir_procesos_omitidos(self, cliente, procesos_judiciales: list) -> None:
-        # PENDIENTE - mismo problema que escribir_detalle_procesos.
-        raise NotImplementedError(
-            "escribir_procesos_omitidos no esta implementado en LocalExcelWriter "
-            "(depende de metodos que solo existen en GraphAPIWriter) - pendiente."
-        )
-
-    def guardar(self) -> None:
-        self._refrescar_streams_de_imagenes()
-        self.wb.save(self.ruta_excel)
-
-    # Columnas del bloque SRI-cliente (14-21) - hardcodeadas por indice
-    # porque sus nombres de columna se repiten identicos en el bloque
-    # de representante legal (22-29) y _col() por nombre resolveria mal
-    # (el diccionario de mapa_columnas no distingue duplicados).
-    COL_SRI_RAZON_SOCIAL = 14
-    COL_SRI_ESTADO_CONTRIBUYENTE = 15
-    COL_SRI_FECHA_INICIO = 16
-    COL_SRI_FECHA_CESE = 17
-    COL_SRI_FECHA_REINICIO = 18
-    COL_SRI_CONTRIBUYENTE_FANTASMA = 19
-    COL_SRI_TRANSACCIONES_INEXISTENTES = 20
-    COL_SRI_ACTIVIDAD_ECONOMICA = 21
-
+    
     def escribir_sri_ruc(self, fila_excel: int, datos: dict, datos_representante_legal: dict = None) -> None:
         """
         Escribe el resultado de consultar_ruc() del SRI para el cliente,
@@ -222,42 +218,152 @@ class LocalExcelWriter(ExcelWriter):
             self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_ACTIVIDAD_ECONOMICA, datos_representante_legal.get("actividad_economica", ""))
             self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_CONTRIBUYENTE_FANTASMA, datos_representante_legal.get("contribuyente_fantasma", ""))
             self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_TRANSACCIONES_INEXISTENTES, datos_representante_legal.get("contribuyente_transacciones_inexistentes", ""))
-    # Bloque SRI-representante-legal (22-29) - mismo motivo de indices
-    # directos que el bloque anterior. OJO: el orden de campos aqui es
-    # distinto al bloque del cliente (actividad economica va antes que
-    # fantasma/transacciones, no al final).
-    COL_SRI_RL_RAZON_SOCIAL = 22
-    COL_SRI_RL_ESTADO_CONTRIBUYENTE = 23
-    COL_SRI_RL_FECHA_INICIO = 24
-    COL_SRI_RL_FECHA_CESE = 25
-    COL_SRI_RL_FECHA_REINICIO = 26
-    COL_SRI_RL_ACTIVIDAD_ECONOMICA = 27
-    COL_SRI_RL_CONTRIBUYENTE_FANTASMA = 28
-    COL_SRI_RL_TRANSACCIONES_INEXISTENTES = 29
 
-    def __init__(self, ruta_excel: str, nombre_hoja: str = "Revision"):
-        self.ruta_excel = ruta_excel
-        self.nombre_hoja = nombre_hoja
-        self.wb = load_workbook(ruta_excel)
-        self.hoja = self.wb[nombre_hoja]
-        self.mapa_columnas = self._construir_mapa_columnas(self.hoja)
+    def escribir_sri_deudas(self, fila_excel: int, tiene_deuda_firme: bool, valor_deuda_firme: str = "") -> None:
+        col = self._col("SRI DEUDAS")
+        if tiene_deuda_firme:
+            texto = f"El ciudadano / contribuyente registra un valor de deudas firmes de {valor_deuda_firme}"
+        else:
+            texto = "El ciudadano / contribuyente no registra deudas firmes."
+        self._escribir_valor_con_estilo(fila_excel, col, texto)
 
-        # Mitigacion de un bug conocido de openpyxl: wb.save() CIERRA el
-        # stream interno de cada imagen embebida al terminar de guardar.
-        # Un segundo guardado en el mismo proceso falla con "I/O
-        # operation on closed file" porque no hay como releer un stream
-        # ya cerrado. Se capturan los bytes crudos UNA SOLA VEZ aqui,
-        # mientras los streams siguen frescos tras la carga, y cada
-        # guardado posterior arma un BytesIO nuevo desde esa copia en
-        # memoria - nunca depende de releer un stream ya usado.
-        # Confirmado con evidencia real: 5/5 guardados seguidos en el
-        # mismo proceso, antes fallaba siempre en el 2do.
-        import io
-        self._imagenes_bytes_originales = []
-        for hoja_wb in self.wb.worksheets:
-            for img in getattr(hoja_wb, "_images", []):
-                img.ref.seek(0)
-                self._imagenes_bytes_originales.append((img, img.ref.read()))
+    def escribir_sri_estado_tributario(self, fila_excel: int, resultado: str, obligaciones_pendientes: str = "") -> None:
+        col = self._col("SRI OBLIGACIONES TRIBUTARIAS")
+        if "AL DIA" in resultado.upper():
+            texto = "AL DIA EN SUS OBLIGACIONES"
+        else:
+            texto = obligaciones_pendientes
+        self._escribir_valor_con_estilo(fila_excel, col, texto)
+
+    def escribir_municipios(self, fila_excel: int, resultados: dict) -> None:
+        """
+        Consolida los 5 municipios en 2 columnas (AF, AG).
+        resultados: {"Quito": DeudaMunicipal, "Cuenca": DeudaMunicipal, ...}
+        - Columna MUNICIPIO: nombres de los municipios CON deuda, separados por "/".
+          Si el cliente no aparece registrado en NINGUNO de los 5, mensaje especial.
+          Si aparece registrado pero sin deuda en ninguno, "Ninguno".
+        - Columna DEUDA: suma total de las deudas de todos los municipios consultados.
+        """
+        municipios_con_deuda = []
+        total_deuda = 0.0
+        algun_registrado = False
+
+        for nombre_municipio, deuda in resultados.items():
+            if deuda.registrado:
+                algun_registrado = True
+            if deuda.tiene_deuda:
+                municipios_con_deuda.append(nombre_municipio)
+            valor_limpio = (deuda.valor_total or "0").replace("$", "").replace(",", "").strip()
+            try:
+                total_deuda += float(valor_limpio)
+            except ValueError:
+                pass  # valor no numerico (ej. mensaje de error) - no se suma, no se rompe
+
+        if not algun_registrado:
+            texto_municipios = "No existen registros en los 5 municipios"
+        elif municipios_con_deuda:
+            texto_municipios = " / ".join(municipios_con_deuda)
+        else:
+            texto_municipios = "Ninguno"
+
+        self._escribir_valor_con_estilo(fila_excel, self._col("MUNICIPIO"), texto_municipios)
+        self._escribir_valor_con_estilo(fila_excel, self._col("DEUDA"), f"${total_deuda:,.2f}")
+
+    def escribir_sercop_proveedor(self, fila_excel: int, estado: str) -> None:
+        """Columna INCOP (AH). El campo 'estado' del scraper ya viene
+        formateado exactamente como se necesita: 'PROVEEDOR DEL ESTADO'
+        o 'NO ES PROVEEDOR DEL ESTADO'."""
+        col = self._col("INCOP")
+        self._escribir_valor_con_estilo(fila_excel, col, estado)
+
+    def escribir_sercop_certificados(self, fila_excel: int, datos: dict) -> None:
+        """
+        datos = resultado completo de buscar_cliente() en
+        sitio_sercop_certificados.py: {"contratos_pendientes": {...},
+        "incumplimientos": {...}}, cada uno con su propio 'resultado'
+        (SI/NO/INDETERMINADO).
+        - AI: contratos_pendientes -> "¿Tiene procesos pendientes con el Estado?"
+        - AJ: incumplimientos -> "¿Es contratista incumplido?"
+        """
+        resultado_contratos = datos.get("contratos_pendientes", {}).get("resultado", "INDETERMINADO")
+        resultado_incumplimientos = datos.get("incumplimientos", {}).get("resultado", "INDETERMINADO")
+
+        self._escribir_valor_con_estilo(fila_excel, self._col("¿Tiene procesos pendientes con el Estado?"), resultado_contratos)
+        self._escribir_valor_con_estilo(fila_excel, self._col("¿Es contratista incumplido?"), resultado_incumplimientos)
+
+    def escribir_salud(self, fila_excel: int, situacion_laboral: str, tipo_afiliacion: str) -> None:
+        """Columnas AL (Situacion Laboral) y AM (Tipo de Afiliacion)."""
+        self._escribir_valor_con_estilo(fila_excel, self._col("Situación Laboral"), situacion_laboral)
+        self._escribir_valor_con_estilo(fila_excel, self._col("Tipo de Afiliación"), tipo_afiliacion)
+
+    def escribir_iess(self, fila_excel: int, iess: str, deuda_obligaciones: str = "") -> None:
+        """
+        Columnas AN (IESS - texto SI/NO registra mora) y AO (Deuda
+        obligaciones patronales, formato $). deuda_obligaciones viene
+        vacio del scraper cuando no hay mora (el regex solo matchea el
+        monto si el texto menciona un valor) - se normaliza a "$0.00"
+        en ese caso.
+        """
+        col_iess = self._col("IESS")
+        col_deuda = self._col("Deuda obligaciones patronales")
+
+        self._escribir_valor_con_estilo(fila_excel, col_iess, iess)
+
+        valor_limpio = (deuda_obligaciones or "").strip()
+        if not valor_limpio:
+            texto_deuda = "$0.00"
+        else:
+            texto_deuda = valor_limpio if valor_limpio.startswith("$") else f"${valor_limpio}"
+
+        self._escribir_valor_con_estilo(fila_excel, col_deuda, texto_deuda)
+
+    def escribir_scvs_companias(self, fila_excel: int, registrado: bool, cumplimiento_obligaciones: str = "") -> None:
+        """
+        Columna Supercias (AR). Mapea el texto crudo del scraper
+        (ej. "SI HA CUMPLIDO") a las 3 opciones exactas pedidas.
+        Si la empresa no esta registrada en SCVS (RUC no encontrado),
+        va "NA" directamente.
+        """
+        col = self._col("Supercias")
+
+        if not registrado:
+            texto = "NA"
+        elif cumplimiento_obligaciones.strip().upper().startswith("SI"):
+            texto = "SI Cumple con sus obligaciones"
+        else:
+            texto = "NO Cumple con sus obligaciones"
+
+        self._escribir_valor_con_estilo(fila_excel, col, texto)
+
+    def escribir_antecedentes_penales(self, fila_excel: int, posee_antecedentes: bool) -> None:
+        col = self._col("Posee antecedentes penales")
+        self._escribir_valor_con_estilo(fila_excel, col, "SI" if posee_antecedentes else "NO")
+
+    def actualizar_estado_cliente(self, fila_excel: int, estado: str, detalle: str = "") -> None:
+        col = self._col("ESTADO")
+        self._escribir_valor_con_estilo(fila_excel, col, estado)
+        # NOTA: 'detalle' no se escribe - no existe una columna de detalle
+        # libre en la estructura real de 'Revision'. Si se necesita
+        # guardar detalle en algun lado, definir en que columna del
+        # mapeo real deberia ir (pendiente de confirmar).
+
+    def escribir_detalle_procesos(self, cliente, procesos_judiciales: list, denuncias: list) -> None:
+        # PENDIENTE - ROTO DESDE ANTES DE HOY, fuera de alcance de esta
+        # sesion (no lo necesita Antecedentes Penales). Llama a
+        # self._asegurar_hoja_existe / self._obtener_ultima_fila /
+        # self._escribir_filas_batch, que solo existen en GraphAPIWriter,
+        # nunca se definieron aqui en LocalExcelWriter. No usar todavia.
+        raise NotImplementedError(
+            "escribir_detalle_procesos no esta implementado en LocalExcelWriter "
+            "(depende de metodos que solo existen en GraphAPIWriter) - pendiente."
+        )
+
+    def escribir_procesos_omitidos(self, cliente, procesos_judiciales: list) -> None:
+        # PENDIENTE - mismo problema que escribir_detalle_procesos.
+        raise NotImplementedError(
+            "escribir_procesos_omitidos no esta implementado en LocalExcelWriter "
+            "(depende de metodos que solo existen en GraphAPIWriter) - pendiente."
+        )
 
     def _refrescar_streams_de_imagenes(self) -> None:
         """Arma un BytesIO nuevo para cada imagen desde los bytes crudos
@@ -266,6 +372,10 @@ class LocalExcelWriter(ExcelWriter):
         import io
         for img, datos in self._imagenes_bytes_originales:
             img.ref = io.BytesIO(datos)
+
+    def guardar(self) -> None:
+        self._refrescar_streams_de_imagenes()
+        self.wb.save(self.ruta_excel)
 
 
 import truststore
