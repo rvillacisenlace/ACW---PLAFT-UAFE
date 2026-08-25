@@ -426,6 +426,22 @@ class LocalExcelWriter(ExcelWriter):
                 for col in (col_no, col_fecha, col_proceso, col_accion, col_obs):
                     self._escribir_valor_con_estilo(fila_excel, col, "-")
 
+    def escribir_estado_final(self, fila_excel: int, resultados: dict) -> None:
+        """
+        Interpreta el diccionario de resultados por sitio (mismo formato
+        que main.py produce: {nombre_sitio: resultado_o_error}) y escribe
+        el ESTADO final. Un sitio fallido se ve como
+        {"error": ..., "requiere_revision_manual": True}.
+        - "Completado con pendientes": al menos un sitio requirio revision manual.
+        - "Completado": todos los sitios terminaron sin marca de revision manual.
+        """
+        requiere_revision = any(
+            isinstance(r, dict) and r.get("requiere_revision_manual")
+            for r in resultados.values()
+        )
+        estado = "Completado con pendientes" if requiere_revision else "Completado"
+        self.actualizar_estado_cliente(fila_excel, estado)
+
     def actualizar_estado_cliente(self, fila_excel: int, estado: str, detalle: str = "") -> None:
         col = self._col("ESTADO")
         self._escribir_valor_con_estilo(fila_excel, col, estado)

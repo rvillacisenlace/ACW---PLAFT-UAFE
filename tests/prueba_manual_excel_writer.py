@@ -144,3 +144,19 @@ procesos_ejemplo = [
 writer.escribir_funcion_judicial(fila_excel=4, procesos=procesos_ejemplo, total_procesos=4, tematica_general="Civil/Mercantil")
 writer.guardar()
 print("\nescribir_funcion_judicial probado - revisa fila 4, columnas EZ-FP (slot 3 debe tener '-' en las 5 columnas)")
+
+resultados_todo_bien = {
+    "sri_ruc": {"razon_social": "..."},
+    "antecedentes_penales": True,
+    "contraloria": [],
+}
+writer.escribir_estado_final(fila_excel=4, resultados=resultados_todo_bien)
+
+resultados_con_pendiente = {
+    "sri_ruc": {"razon_social": "..."},
+    "scvs_companias": {"error": "Timeout", "requiere_revision_manual": True},
+}
+writer.escribir_estado_final(fila_excel=5, resultados=resultados_con_pendiente)
+
+writer.guardar()
+print("\nescribir_estado_final probado - fila 4 debe decir 'Completado', fila 5 'Completado con pendientes'")

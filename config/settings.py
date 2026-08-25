@@ -54,6 +54,12 @@ class InfraConfig:
     local_download_dir: str
     log_dir: str
     process_run_user: str
+    azure_tenant_id: str
+    azure_client_id: str
+    azure_client_secret: str
+    graph_drive_id: str
+    graph_excel_item_id: str
+    cuenta_onedrive: str
 
 def cargar_infra_config() -> InfraConfig:
     # NOTA: captcha_api_key y ai_summary_api_key usan os.getenv (no _requerido)
@@ -70,4 +76,13 @@ def cargar_infra_config() -> InfraConfig:
         local_download_dir=os.getenv("LOCAL_DOWNLOAD_DIR", "./data/staging"),
         log_dir=os.getenv("LOG_DIR", "./data/logs"),
         process_run_user=os.getenv("PROCESS_RUN_USER", "bot-debida-diligencia"),
+        # Graph API - azure_tenant_id/client_id/client_secret ya estan en
+        # .env; graph_drive_id/graph_excel_item_id se llenan corriendo
+        # tests/prueba_graph_buscar_archivo.py (no se buscan a mano).
+        azure_tenant_id=os.getenv("AZURE_TENANT_ID", ""),
+        azure_client_id=os.getenv("AZURE_CLIENT_ID", ""),
+        azure_client_secret=os.getenv("AZURE_CLIENT_SECRET", ""),
+        graph_drive_id=os.getenv("GRAPH_DRIVE_ID", ""),
+        graph_excel_item_id=os.getenv("GRAPH_EXCEL_ITEM_ID", ""),
+        cuenta_onedrive=os.getenv("CUENTA_ONEDRIVE", "unidadq@enlace.ec"),
     )
