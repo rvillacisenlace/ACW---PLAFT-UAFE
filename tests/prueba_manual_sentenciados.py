@@ -10,7 +10,7 @@ with sync_playwright() as p:
     page = context.new_page()
 
     scraper = ScraperSentenciados(context=context, url_base=URL_SENTENCIADOS)
-    cliente = Cliente(identificacion="0990014094001", tipo_persona=TipoPersona.JURIDICA, razon_social="INDUAUTO S.A.")
+    cliente = Cliente(identificacion="0911788289", tipo_persona=TipoPersona.NATURAL, nombres_completos="ALVAREZ HENRIQUES AQUILES DAVID")
 
     sentenciados, total = scraper.buscar_cliente(page, cliente)
 

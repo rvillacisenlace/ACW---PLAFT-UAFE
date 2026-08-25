@@ -14,8 +14,8 @@ print("URL_ANTECEDENTES_PENALES:", parametros.get("URL_ANTECEDENTES_PENALES"))
 
 # Prueba de escritura - OJO: esto SÍ modifica el archivo real al guardar.
 # Comenta las siguientes 2 líneas si solo quieres probar lectura primero.
-#writer.escribir_antecedentes_penales(fila_excel=clientes[0].fila_excel, posee_antecedentes=False)
-#writer.guardar()
+writer.escribir_antecedentes_penales(fila_excel=clientes[0].fila_excel, posee_antecedentes=False)
+writer.guardar()
 
 # --- Prueba aislada: escribir_sri_ruc ---
 datos_sri_ejemplo = {
@@ -100,3 +100,47 @@ writer.escribir_scvs_companias(fila_excel=5, registrado=True, cumplimiento_oblig
 writer.escribir_scvs_companias(fila_excel=6, registrado=False, cumplimiento_obligaciones="")
 writer.guardar()
 print("\nescribir_scvs_companias probado - revisa filas 4/5/6, columna AR")
+
+# --- Prueba aislada: escribir_contraloria ---
+resumen_ejemplo = {
+    "posee_declaraciones": "SI",
+    "vigencia": "ALCALDE - GOBIERNO AUTONOMO DESCENTRALIZADO MUNICIPAL DE GUAYAQUIL / ALCALDE DE GUAYAQUIL - M.I. MUNICIPIO DE GUAYAQUIL",
+    "cargo": "ALCALDE - GOBIERNO AUTONOMO DESCENTRALIZADO MUNICIPAL DE GUAYAQUIL",
+    "tiempo": "2",
+    "ultimo_anio_en_cargo": "2025",
+}
+writer.escribir_contraloria(fila_excel=4, resumen=resumen_ejemplo)
+
+resumen_desactualizado = {
+    "posee_declaraciones": "SI",
+    "vigencia": "Desactualizado",
+    "cargo": "-",
+    "tiempo": "-",
+    "ultimo_anio_en_cargo": "-",
+}
+writer.escribir_contraloria(fila_excel=5, resumen=resumen_desactualizado)
+
+writer.guardar()
+print("\nescribir_contraloria probado - revisa filas 4/5, columnas EB-EG")
+
+from src.core.models import Sentenciado
+
+top3_ejemplo = [
+    Sentenciado(numero_proceso="09333202600398", fecha_resolucion="18/08/2026", infraccion="282 INCUMPLIMIENTO DE DECISIONES LEGÍTIMAS DE AUTORIDAD COMPETENTE, INC.1"),
+    Sentenciado(numero_proceso="17U05202600018", fecha_resolucion="02/04/2026", infraccion="369 DELICUENCIA ORGANIZADA INC 3"),
+]
+writer.escribir_sentenciados(fila_excel=4, total_encontrado=2, top3=top3_ejemplo)
+writer.guardar()
+print("\nescribir_sentenciados probado - revisa fila 4, columnas EM-EY (slot 3 debe tener '-' en las 4 columnas)")
+
+from src.core.models import ProcesoJudicial
+
+procesos_ejemplo = [
+    ProcesoJudicial(numero_proceso="17230-2024-00186", materia="FACTURAS O DOCUMENTOS ART. 356 NUM.2", accion_infraccion_delito="FACTURAS O DOCUMENTOS ART. 356 NUM.2", lugar="UNIDAD JUDICIAL CIVIL...", fecha_ingreso="15/03/2024", resumen_ia="Resumen de ejemplo"),
+    ProcesoJudicial(numero_proceso="17294-2022-04032G", materia="ARCHIVO...", accion_infraccion_delito="ARCHIVO DE LA INVESTIGACIÓN PREVIA ART. 586", lugar="UNIDAD JUDICIAL PENAL...", fecha_ingreso="10/01/2022", resumen_ia="Otro resumen"),
+    ProcesoJudicial(numero_proceso="17371-2022-02501", excluido_por_materia=True),
+    ProcesoJudicial(numero_proceso="17371-2014-4451", excluido_por_materia=True),
+]
+writer.escribir_funcion_judicial(fila_excel=4, procesos=procesos_ejemplo, total_procesos=4, tematica_general="Civil/Mercantil")
+writer.guardar()
+print("\nescribir_funcion_judicial probado - revisa fila 4, columnas EZ-FP (slot 3 debe tener '-' en las 5 columnas)")

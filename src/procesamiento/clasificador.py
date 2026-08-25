@@ -1,6 +1,3 @@
-"""
-src/procesamiento/clasificador.py
-"""
 import re
 from src.procesamiento.normalizacion import normalizar_texto_busqueda
 

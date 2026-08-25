@@ -1,6 +1,8 @@
 import io
 from openai import OpenAI
 from pypdf import PdfReader
+import truststore
+truststore.inject_into_ssl()
 
 PROMPT_SISTEMA = (
     "A continuación se presentan uno o dos documentos judiciales ecuatorianos "

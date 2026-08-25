@@ -7,12 +7,18 @@ Captcha visual clásico (imagen con código a escribir), embebido como
 base64 en el propio HTML - se resuelve con el método "normal" de
 2Captcha (distinto a recaptcha/hcaptcha/altcha ya usados en el proyecto).
 """
+
 from playwright.sync_api import Page
+
+import unicodedata
+import re
+from datetime import datetime
 
 from src.scrapers.base_scraper import BaseScraper, ScraperError
 from src.core.models import Cliente, ResultadoConsulta, TipoPersona
 from config.settings import cargar_infra_config
 from src.captcha.resolver import resolver_captcha_imagen_con_2captcha, CaptchaResolverError
+
 
 class ScraperContraloria(BaseScraper):
     nombre_sitio = "Contraloría - Declaraciones Juradas"
@@ -136,3 +142,71 @@ class ScraperContraloria(BaseScraper):
             self.delay_humano(1.0, 1.5)
 
         return resultados
+
+    def _parsear_anio(self, texto_anio: str) -> int | None:
+        """Extrae el primer numero de 4 digitos del texto de año -
+        defensivo por si viene con texto adicional pegado."""
+        coincidencia = re.search(r"(\d{4})", texto_anio or "")
+        return int(coincidencia.group(1)) if coincidencia else None
+
+    def _normalizar_texto(self, texto: str) -> str:
+        """Normaliza SOLO para comparar/agrupar (nunca para mostrar):
+        sin tildes, mayusculas, espacios colapsados. Corrige
+        inconsistencias reales del propio portal (confirmado con
+        evidencia: 'AUTONOMO' en 2025 vs 'AUTÓNOMO' en 2024/2023 para
+        la misma entidad)."""
+        texto = unicodedata.normalize("NFKD", texto or "").encode("ascii", "ignore").decode("ascii")
+        return " ".join(texto.upper().split())
+
+    def resumir_declaraciones(self, resultados: list[dict]) -> dict:
+        if not resultados:
+            return {
+                "posee_declaraciones": "NO", "vigencia": "Desactualizado",
+                "cargo": "-", "tiempo": "-", "ultimo_anio_en_cargo": "-",
+            }
+
+        anio_actual = datetime.now().year
+        anios_vigentes = {anio_actual, anio_actual - 1, anio_actual - 2}
+
+        def clave_normalizada(r):
+            return f"{self._normalizar_texto(r['cargo'])} - {self._normalizar_texto(r['entidad'])}"
+
+        def texto_original(r):
+            return f"{r['cargo']} - {r['entidad']}"
+
+        vigentes = [r for r in resultados if self._parsear_anio(r["año"]) in anios_vigentes]
+
+        if not vigentes:
+            return {
+                "posee_declaraciones": "SI", "vigencia": "Desactualizado",
+                "cargo": "-", "tiempo": "-", "ultimo_anio_en_cargo": "-",
+            }
+
+        vigentes_ordenados = sorted(vigentes, key=lambda r: self._parsear_anio(r["año"]), reverse=True)
+
+        claves_vistas = []
+        textos_vigencia = []
+        for r in vigentes_ordenados:
+            clave = clave_normalizada(r)
+            if clave not in claves_vistas:
+                claves_vistas.append(clave)
+                textos_vigencia.append(texto_original(r))
+
+        registro_mas_reciente = vigentes_ordenados[0]
+        clave_actual = clave_normalizada(registro_mas_reciente)
+
+        # Tiempo se cuenta SOLO dentro de la ventana de 3 anos vigentes,
+        # no del historico completo - confirmado con evidencia real
+        # (caso Alvarez Henriques: 2023 no cuenta aunque sea el mismo cargo).
+        anios_en_ese_cargo = {
+            self._parsear_anio(r["año"]) for r in vigentes
+            if clave_normalizada(r) == clave_actual and self._parsear_anio(r["año"]) is not None
+        }
+
+        return {
+            "posee_declaraciones": "SI",
+            "vigencia": " / ".join(textos_vigencia),
+            "cargo": texto_original(registro_mas_reciente),
+            "tiempo": str(len(anios_en_ese_cargo)),
+            "ultimo_anio_en_cargo": str(max(anios_en_ese_cargo)),
+        }

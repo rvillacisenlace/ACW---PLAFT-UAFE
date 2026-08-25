@@ -29,6 +29,6 @@ with sync_playwright() as p:
         print(f"  Demandado: {proceso.demandado}")
         print(f"  Omitido por volumen: {proceso.omitido_por_volumen}")
         print(f"  Excluido por materia: {proceso.excluido_por_materia}")
-
+        print(f"  Resumen IA: {proceso.resumen_ia}")
     input("\nPresiona ENTER para cerrar...")
     browser.close()

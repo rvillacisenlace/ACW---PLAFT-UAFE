@@ -33,7 +33,11 @@ class ScraperSentenciados(BaseScraper):
             or getattr(cliente, "es_juridica_con_ruc_persona_natural", False)
         )
 
-        sentenciados_por_numero = {}
+        # Se recolectan TODOS los resultados sin descartar nada todavia -
+        # la deduplicacion por numero_proceso se hace despues, comparando
+        # fechas explicitamente (no "el que se proceso de ultimo", que
+        # dependia del orden de busqueda por casualidad).
+        resultados_crudos = []
 
         if usar_derivacion:
             cedula_real = (
@@ -44,28 +48,27 @@ class ScraperSentenciados(BaseScraper):
                 f"{cliente.identificacion}001" if cliente.tipo_persona == TipoPersona.NATURAL
                 else cliente.identificacion
             )
-
             for identificacion_buscar in (cedula_real, ruc_real):
-                resultados = self._buscar_una_vez(page, cliente, "cedula", identificacion_buscar)
-                for s in resultados:
-                    sentenciados_por_numero[s.numero_proceso] = s
-
-            resultados_nombre = self._buscar_una_vez(page, cliente, "nombre", cliente.nombres_completos)
-            for s in resultados_nombre:
-                sentenciados_por_numero[s.numero_proceso] = s
-
+                resultados_crudos.extend(self._buscar_una_vez(page, cliente, "cedula", identificacion_buscar))
+            resultados_crudos.extend(self._buscar_una_vez(page, cliente, "nombre", cliente.nombres_completos))
         else:
-            # Jurídica: SIEMPRE se busca por razón social Y por RUC, sin
-            # condición - no hay garantía de que una sentencia indexada
-            # solo bajo RUC (o solo bajo razón social) aparezca en la
-            # otra búsqueda, así que se hacen ambas y se combinan por
-            # número de proceso (deduplicado automáticamente).
-            resultados_razon = self._buscar_una_vez(page, cliente, "nombre", cliente.razon_social)
-            for s in resultados_razon:
-                sentenciados_por_numero[s.numero_proceso] = s
+            resultados_crudos.extend(self._buscar_una_vez(page, cliente, "nombre", cliente.razon_social))
+            resultados_crudos.extend(self._buscar_una_vez(page, cliente, "cedula", cliente.identificacion))
 
-            resultados_ruc = self._buscar_una_vez(page, cliente, "cedula", cliente.identificacion)
-            for s in resultados_ruc:
+        def _parsear_fecha(s: Sentenciado) -> datetime:
+            try:
+                return datetime.strptime(s.fecha_resolucion, "%d/%m/%Y")
+            except ValueError:
+                return datetime.min
+
+        # Consolidar por numero_proceso quedandonos con el mas reciente
+        # de cada grupo (confirmado con evidencia real: un mismo numero
+        # de proceso puede tener 2 registros con dependencia/fecha
+        # distintas - se toma el de fecha mas actual como referencia).
+        sentenciados_por_numero = {}
+        for s in resultados_crudos:
+            existente = sentenciados_por_numero.get(s.numero_proceso)
+            if existente is None or _parsear_fecha(s) > _parsear_fecha(existente):
                 sentenciados_por_numero[s.numero_proceso] = s
 
         todos_sentenciados = list(sentenciados_por_numero.values())
@@ -154,8 +157,11 @@ class ScraperSentenciados(BaseScraper):
             celdas = fila.locator("td").all_inner_texts()
             if len(celdas) < 8:
                 continue
+            numero_proceso = celdas[1].strip()
+            if not numero_proceso:
+                continue  # fila vacia/fantasma del portal (Angular ng-repeat) - no es un caso real
             resultados.append(Sentenciado(
-                numero_proceso=celdas[1].strip(),
+                numero_proceso=numero_proceso,
                 provincia=celdas[2].strip(),
                 dependencia_jurisdiccional=celdas[3].strip(),
                 fecha_resolucion=celdas[4].strip(),

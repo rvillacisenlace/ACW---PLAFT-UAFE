@@ -9,6 +9,7 @@ main.py solo debe conocer la interfaz ExcelWriter, nunca la implementación.
 from abc import ABC, abstractmethod
 from openpyxl import load_workbook
 from openpyxl.styles import Font, Alignment
+from openpyxl.styles import Font, Alignment, PatternFill
 
 
 class ExcelWriter(ABC):
@@ -49,7 +50,8 @@ class LocalExcelWriter(ExcelWriter):
 
     ESTILO_FUENTE = Font(name="Book Antiqua", size=11)
     ESTILO_ALINEACION = Alignment(horizontal="center", vertical="center", wrap_text=True)
-
+    ESTILO_RELLENO = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+    
     # Columnas del bloque SRI-cliente (14-21) - hardcodeadas por indice
     # porque sus nombres de columna se repiten identicos en el bloque
     # de representante legal (22-29) y _col() por nombre resolveria mal
@@ -75,6 +77,36 @@ class LocalExcelWriter(ExcelWriter):
     COL_SRI_RL_ACTIVIDAD_ECONOMICA = 27
     COL_SRI_RL_CONTRIBUYENTE_FANTASMA = 28
     COL_SRI_RL_TRANSACCIONES_INEXISTENTES = 29
+
+    # Bloque Contraloria (EB-EG). "Cargo" se repite 5 veces en la hoja
+    # (columnas 50,59,68,77,135) - se usa indice directo, no _col().
+    # ED "Categoria" (134) se deja SIN TOCAR - es de llenado manual.
+    COL_CONTRALORIA_DECLARACIONES = 132
+    COL_CONTRALORIA_VIGENCIA = 133
+    COL_CONTRALORIA_CARGO = 135
+    COL_CONTRALORIA_TIEMPO = 136
+    COL_CONTRALORIA_ULTIMO_ANIO = 137
+
+    # Bloque Sentenciados (EM-EY). Los 4 nombres de columna (No., No.
+    # Proceso, Fecha de Resolucion, Infraccion) se repiten 3 veces (uno
+    # por cada slot de hasta 3 sentencias) - indices directos.
+    COL_SENTENCIADOS_TOTAL = 143
+    COL_SENTENCIADOS_SLOTS = [
+        (144, 145, 146, 147),  # No., No. Proceso, Fecha, Infraccion - slot 1
+        (148, 149, 150, 151),  # slot 2
+        (152, 153, 154, 155),  # slot 3
+    ]
+
+    # Bloque Funcion Judicial / CNJ (EZ-FP). "No.", "Fecha de ingreso",
+    # "No. proceso", "Accion /Infraccion", "Observaciones" se repiten 3
+    # veces (slots) - indices directos.
+    COL_CNJ_TOTAL = 156
+    COL_CNJ_TEMATICA = 157
+    COL_CNJ_SLOTS = [
+        (158, 159, 160, 161, 162),  # No., Fecha ingreso, No. proceso, Accion/Infraccion, Observaciones - slot 1
+        (163, 164, 165, 166, 167),  # slot 2
+        (168, 169, 170, 171, 172),  # slot 3
+    ]
 
     def __init__(self, ruta_excel: str, nombre_hoja: str = "Revision"):
         self.ruta_excel = ruta_excel
@@ -129,6 +161,7 @@ class LocalExcelWriter(ExcelWriter):
         celda.value = valor
         celda.font = self.ESTILO_FUENTE
         celda.alignment = self.ESTILO_ALINEACION
+        celda.fill = self.ESTILO_RELLENO
 
     def leer_clientes_pendientes(self, nombre_hoja: str = None) -> list:
         """
@@ -208,7 +241,7 @@ class LocalExcelWriter(ExcelWriter):
         ]
         if not datos_representante_legal:
             for col in columnas_rl:
-                self._escribir_valor_con_estilo(fila_excel, col, "NA")
+                self._escribir_valor_con_estilo(fila_excel, col, "-")
         else:
             self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_RAZON_SOCIAL, datos_representante_legal.get("razon_social", ""))
             self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_ESTADO_CONTRIBUYENTE, datos_representante_legal.get("estado_contribuyente", ""))
@@ -322,12 +355,12 @@ class LocalExcelWriter(ExcelWriter):
         Columna Supercias (AR). Mapea el texto crudo del scraper
         (ej. "SI HA CUMPLIDO") a las 3 opciones exactas pedidas.
         Si la empresa no esta registrada en SCVS (RUC no encontrado),
-        va "NA" directamente.
+        va "-" directamente.
         """
         col = self._col("Supercias")
 
         if not registrado:
-            texto = "NA"
+            texto = "-"
         elif cumplimiento_obligaciones.strip().upper().startswith("SI"):
             texto = "SI Cumple con sus obligaciones"
         else:
@@ -338,6 +371,60 @@ class LocalExcelWriter(ExcelWriter):
     def escribir_antecedentes_penales(self, fila_excel: int, posee_antecedentes: bool) -> None:
         col = self._col("Posee antecedentes penales")
         self._escribir_valor_con_estilo(fila_excel, col, "SI" if posee_antecedentes else "NO")
+
+    def escribir_contraloria(self, fila_excel: int, resumen: dict) -> None:
+        """resumen = resultado de ScraperContraloria.resumir_declaraciones()."""
+        self._escribir_valor_con_estilo(fila_excel, self.COL_CONTRALORIA_DECLARACIONES, resumen.get("posee_declaraciones", "-"))
+        self._escribir_valor_con_estilo(fila_excel, self.COL_CONTRALORIA_VIGENCIA, resumen.get("vigencia", "-"))
+        self._escribir_valor_con_estilo(fila_excel, self.COL_CONTRALORIA_CARGO, resumen.get("cargo", "-"))
+        self._escribir_valor_con_estilo(fila_excel, self.COL_CONTRALORIA_TIEMPO, resumen.get("tiempo", "-"))
+        self._escribir_valor_con_estilo(fila_excel, self.COL_CONTRALORIA_ULTIMO_ANIO, resumen.get("ultimo_anio_en_cargo", "-"))
+
+    def escribir_sentenciados(self, fila_excel: int, total_encontrado: int, top3: list) -> None:
+        """
+        top3: lista de objetos Sentenciado (hasta 3), ya ordenados por
+        fecha mas reciente primero (el propio scraper los devuelve asi).
+        Slots sin sentencia (cuando hay menos de 3) se llenan con "-".
+        """
+        self._escribir_valor_con_estilo(fila_excel, self.COL_SENTENCIADOS_TOTAL, str(total_encontrado))
+
+        for i, (col_no, col_proceso, col_fecha, col_infraccion) in enumerate(self.COL_SENTENCIADOS_SLOTS):
+            if i < len(top3):
+                s = top3[i]
+                self._escribir_valor_con_estilo(fila_excel, col_no, str(i + 1))
+                self._escribir_valor_con_estilo(fila_excel, col_proceso, s.numero_proceso)
+                self._escribir_valor_con_estilo(fila_excel, col_fecha, s.fecha_resolucion)
+                self._escribir_valor_con_estilo(fila_excel, col_infraccion, s.infraccion)
+            else:
+                for col in (col_no, col_proceso, col_fecha, col_infraccion):
+                    self._escribir_valor_con_estilo(fila_excel, col, "-")
+
+    def escribir_funcion_judicial(self, fila_excel: int, procesos: list, total_procesos: int, tematica_general: str) -> None:
+        """
+        procesos: lista completa de ProcesoJudicial (incluye omitidos/
+        excluidos). Solo los que NO estan omitidos_por_volumen ni
+        excluidos_por_materia van en los 3 slots de detalle - mismo
+        criterio que ya usa GraphAPIWriter.escribir_detalle_procesos.
+        """
+        self._escribir_valor_con_estilo(fila_excel, self.COL_CNJ_TOTAL, str(total_procesos))
+        self._escribir_valor_con_estilo(fila_excel, self.COL_CNJ_TEMATICA, tematica_general)
+
+        procesos_detalle = [
+            p for p in procesos
+            if not p.omitido_por_volumen and not p.excluido_por_materia
+        ]
+
+        for i, (col_no, col_fecha, col_proceso, col_accion, col_obs) in enumerate(self.COL_CNJ_SLOTS):
+            if i < len(procesos_detalle):
+                p = procesos_detalle[i]
+                self._escribir_valor_con_estilo(fila_excel, col_no, str(i + 1))
+                self._escribir_valor_con_estilo(fila_excel, col_fecha, p.fecha_ingreso)
+                self._escribir_valor_con_estilo(fila_excel, col_proceso, p.numero_proceso)
+                self._escribir_valor_con_estilo(fila_excel, col_accion, p.accion_infraccion_delito)
+                self._escribir_valor_con_estilo(fila_excel, col_obs, p.resumen_ia)
+            else:
+                for col in (col_no, col_fecha, col_proceso, col_accion, col_obs):
+                    self._escribir_valor_con_estilo(fila_excel, col, "-")
 
     def actualizar_estado_cliente(self, fila_excel: int, estado: str, detalle: str = "") -> None:
         col = self._col("ESTADO")
