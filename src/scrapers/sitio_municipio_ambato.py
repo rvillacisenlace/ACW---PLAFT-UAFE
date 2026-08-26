@@ -38,8 +38,8 @@ class ScraperMunicipioAmbato(BaseScraper):
         else:
             return DeudaMunicipal(registrado=False, mensaje="Identificación con formato inesperado.")
 
-        resultado_cedula = self._consultar_una_vez(page, cedula)
-        resultado_ruc = self._consultar_una_vez(page, ruc)
+        resultado_cedula = self._consultar_una_vez(page, cedula, cliente.identificacion)
+        resultado_ruc = self._consultar_una_vez(page, ruc, cliente.identificacion)
 
         return self._combinar_resultados(resultado_cedula, resultado_ruc)
 
@@ -72,7 +72,11 @@ class ScraperMunicipioAmbato(BaseScraper):
         except (ValueError, AttributeError):
             return 0.0
 
-    def _consultar_una_vez(self, page: Page, identificacion: str) -> DeudaMunicipal:
+    def _consultar_una_vez(self, page: Page, identificacion: str, identificacion_evidencia: str) -> DeudaMunicipal:
+        """identificacion: valor para BUSCAR (cedula o RUC). identificacion_evidencia:
+        SIEMPRE cliente.identificacion original - una sola carpeta de evidencia
+        por cliente, sin importar la variante usada para buscar."""
+        self.verificar_campo_lleno(page, "#P9_VALOR", identificacion)
         page.goto(self.url_base)
         self.delay_humano(1.5, 2.5)
 
@@ -94,7 +98,7 @@ class ScraperMunicipioAmbato(BaseScraper):
         except Exception:
             valor_total = ""
 
-        capturar_evidencia(page, identificacion, sitio="sitio_municipio_ambato_resultado", carpeta_sitio="municipio_ambato")
+        capturar_evidencia(page, identificacion_evidencia, sitio="sitio_municipio_ambato_resultado", carpeta_sitio="municipio_ambato")
 
         tiene_deuda = valor_total not in ("$0.00", "")
         return DeudaMunicipal(registrado=True, tiene_deuda=tiene_deuda, valor_total=valor_total)

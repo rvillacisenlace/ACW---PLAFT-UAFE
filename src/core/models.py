@@ -11,9 +11,15 @@ class TipoPersona(str, Enum):
 class Cliente:
     identificacion: str
     tipo_persona: TipoPersona
-    nombres_completos: str = ""   # formato "Apellidos Nombres", solo Natural
-    razon_social: str = ""        # solo Juridica con razón social propia
+    nombres_completos: str = ""
+    razon_social: str = ""
     fila_excel: int = 0
+    # Usados SOLO cuando este objeto Cliente representa al representante
+    # legal de una empresa (ver main.py, cliente_para_persona). Permiten
+    # que la evidencia quede anidada dentro de la carpeta de la empresa
+    # en vez de crear una carpeta separada con la cedula del RL.
+    identificacion_evidencia: str = ""  # si esta vacio, se usa identificacion normal
+    subcarpeta_evidencia: str = ""      # ej. "representante_legal"
 
     @property
     def nombre_para_mostrar(self) -> str:

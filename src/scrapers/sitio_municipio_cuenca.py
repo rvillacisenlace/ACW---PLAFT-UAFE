@@ -25,7 +25,7 @@ class ScraperMunicipioCuenca(BaseScraper):
         self._aceptar_cookies_si_aparece(page)
 
         # Primer intento: cédula directa
-        resultado = self._consultar_una_vez(page, cliente.identificacion)
+        resultado = self._consultar_una_vez(page, cliente.identificacion, cliente.identificacion)
         if resultado.registrado:
             return resultado
 
@@ -35,7 +35,7 @@ class ScraperMunicipioCuenca(BaseScraper):
             ruc_derivado = f"{cliente.identificacion}001"
             self._recargar_pagina_robusto(page)
             self._aceptar_cookies_si_aparece(page)
-            resultado = self._consultar_una_vez(page, ruc_derivado)
+            resultado = self._consultar_una_vez(page, ruc_derivado, cliente.identificacion)
 
         return resultado
 
@@ -63,7 +63,17 @@ class ScraperMunicipioCuenca(BaseScraper):
         except Exception:
             pass
 
-    def _consultar_una_vez(self, page: Page, identificacion: str) -> DeudaMunicipal:
+    def _consultar_una_vez(self, page: Page, identificacion: str, identificacion_evidencia: str) -> DeudaMunicipal:
+        """
+        identificacion: valor usado para BUSCAR (puede ser cedula o RUC
+        derivado). identificacion_evidencia: SIEMPRE la identificacion
+        original del cliente (cliente.identificacion) - para que toda la
+        evidencia de un mismo cliente quede en UNA sola carpeta, sin
+        importar con cual variante (cedula/RUC) se hizo la busqueda real.
+        Confirmado bug real: antes se usaba 'identificacion' (variable),
+        partiendo la evidencia en 2 carpetas para el mismo cliente.
+        """
+        self.verificar_campo_lleno(page, "#inputCampo", identificacion)
         page.wait_for_selector("#inputCampo", state="visible", timeout=25000)
         page.fill("#inputCampo", identificacion)
         self.delay_humano(0.5, 1.0)

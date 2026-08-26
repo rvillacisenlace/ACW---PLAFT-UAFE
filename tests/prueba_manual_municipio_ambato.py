@@ -10,7 +10,7 @@ with sync_playwright() as p:
     page = context.new_page()
 
     scraper = ScraperMunicipioAmbato(context=context, url_base=URL_MUNICIPIO_AMBATO)
-    cliente = Cliente(identificacion="1800027839001", tipo_persona=TipoPersona.NATURAL, nombres_completos="HERDOIZA COBO HECTOR EDUARDO")
+    cliente = Cliente(identificacion="1800027847001", tipo_persona=TipoPersona.NATURAL, nombres_completos="NARANJO LALAMA MARIANA DE JESUS")
 
     resultado = scraper.buscar_cliente(page, cliente)
     print(f"\n¿Registrado?: {resultado.registrado}")

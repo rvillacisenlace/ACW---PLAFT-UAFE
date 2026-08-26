@@ -149,7 +149,7 @@ class ScraperSalud(BaseScraper):
 
         resultado = Salud()
         if pdf_bytes is not None:
-            ruta_guardada = guardar_pdf_local(pdf_bytes, cliente.identificacion, "cobertura_salud", carpeta_sitio="salud")
+            ruta_guardada = guardar_pdf_local(pdf_bytes, cliente.identificacion_evidencia or cliente.identificacion, "cobertura_salud", carpeta_sitio="salud", subcarpeta=cliente.subcarpeta_evidencia)
             resultado.ruta_pdf = ruta_guardada
 
             try:

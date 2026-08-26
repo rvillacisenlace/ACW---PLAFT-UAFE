@@ -41,7 +41,7 @@ def _clasificar_identificacion(identificacion: str) -> str:
     return "desconocido"
 
 
-def resolver_representante_legal(page: Page, scraper_sri: ScraperSRI, cliente_juridica: Cliente) -> dict:
+def resolver_representante_legal(page: Page, scraper_sri: ScraperSRI, cliente_juridica: Cliente, prefijo_subcarpeta: str = "representante_legal") -> dict:
     """
     Devuelve un diccionario con:
     - persona_encontrada: bool
@@ -72,6 +72,8 @@ def resolver_representante_legal(page: Page, scraper_sri: ScraperSRI, cliente_ju
             identificacion=ruc_actual,
             tipo_persona=TipoPersona.JURIDICA,
             razon_social=razon_social_actual,
+            identificacion_evidencia=(cliente_juridica.identificacion if nivel > 1 else ""),
+            subcarpeta_evidencia=(f"{prefijo_subcarpeta}_{ruc_actual}" if nivel > 1 else ""),
         )
         datos = scraper_sri.consultar_ruc(page, cliente_temporal)
 
@@ -112,6 +114,8 @@ def resolver_representante_legal(page: Page, scraper_sri: ScraperSRI, cliente_ju
                     identificacion=cedula_persona,
                     tipo_persona=TipoPersona.NATURAL,
                     nombres_completos=nombre_representante,
+                    identificacion_evidencia=cliente_juridica.identificacion,
+                    subcarpeta_evidencia=f"{prefijo_subcarpeta}_{cedula_persona}",
                 )
                 datos_sri_persona = scraper_sri.consultar_ruc(page, cliente_persona)
             except Exception as e:

@@ -74,3 +74,31 @@ class BaseScraper(ABC):
     def tiene_captcha(self, page: Page) -> bool:
         """Detecta si el portal presentó un captcha en esta carga de página."""
         raise NotImplementedError
+
+    def verificar_campo_lleno(self, page: Page, selector: str, valor_esperado: str, timeout_ms: int = 5000) -> None:
+        """
+        Confirma que un campo de texto quedo con el valor exacto que se
+        intento escribir, antes de aceptar cualquier conclusion de "no
+        encontrado" como valida. Usa un timeout corto (5s, no los 30s
+        default de Playwright) porque si el campo desaparecio/nunca
+        aparecio, es mejor fallar rapido con un mensaje claro que
+        esperar el timeout completo con un error crudo.
+        """
+        locator = page.locator(selector)
+        try:
+            locator.wait_for(state="visible", timeout=timeout_ms)
+            valor_real = locator.input_value().strip()
+        except Exception as e:
+            raise ScraperError(
+                f"[{self.nombre_sitio}] El campo '{selector}' desapareció o nunca respondió "
+                f"tras escribir '{valor_esperado}' ({type(e).__name__}) - fallo mecánico, no un "
+                f"resultado real de 'no encontrado'.",
+                resultado=ResultadoConsulta.ERROR_CAPTCHA,
+            )
+        if valor_real != valor_esperado.strip():
+            raise ScraperError(
+                f"[{self.nombre_sitio}] El campo '{selector}' quedó con '{valor_real}' "
+                f"en vez de '{valor_esperado}' - fallo mecánico de escritura, no es un "
+                f"resultado real de 'no encontrado'.",
+                resultado=ResultadoConsulta.ERROR_CAPTCHA,
+            )

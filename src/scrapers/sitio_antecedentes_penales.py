@@ -172,7 +172,7 @@ class ScraperAntecedentesPenales(BaseScraper):
         numero_documento = page.locator("#dvCi1").inner_text().strip()
         posee_antecedentes = page.locator("#dvAntecedent1").inner_text().strip()
 
-        capturar_evidencia(page, cliente.identificacion, sitio="sitio_antecedentes_penales_resultado", carpeta_sitio="antecedentes_penales")
+        capturar_evidencia(page, cliente.identificacion_evidencia or cliente.identificacion, sitio="sitio_antecedentes_penales_resultado", carpeta_sitio="antecedentes_penales", subcarpeta=cliente.subcarpeta_evidencia)
 
         resultado = AntecedentePenal(
             nombre=nombre,
@@ -184,7 +184,7 @@ class ScraperAntecedentesPenales(BaseScraper):
         # Paso 7: Visualizar Certificado (abre PDF en pestaña nueva)
         try:
             pdf_bytes = self._descargar_certificado(page)
-            ruta_guardada = guardar_pdf_local(pdf_bytes, cliente.identificacion, "certificado_antecedentes_penales", carpeta_sitio="antecedentes_penales")
+            ruta_guardada = guardar_pdf_local(pdf_bytes, cliente.identificacion_evidencia or cliente.identificacion, "certificado_antecedentes_penales", carpeta_sitio="antecedentes_penales", subcarpeta=cliente.subcarpeta_evidencia)
             resultado.ruta_pdf = ruta_guardada
         except Exception as e:
             print(f"[{cliente.identificacion}] Falló descarga del certificado: {type(e).__name__}: {e}")

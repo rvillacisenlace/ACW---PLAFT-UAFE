@@ -32,8 +32,18 @@ class ScraperSCVSCompanias(BaseScraper):
 
         # Seleccionar explícitamente el radio "R.U.C." - no asumir que
         # ya viene seleccionado (confirmado que el atributo HTML no
-        # siempre coincide con el estado visual real).
+        # siempre coincide con el estado visual real). El sitio agregó
+        # una opción "Expediente" como nueva default (maxlength=6,
+        # placeholder "INGRESE EL EXPEDIENTE") - el clic dispara un AJAX
+        # de PrimeFaces que reconfigura el campo de forma asincrona, asi
+        # que se espera activamente a que el maxlength cambie de "6" en
+        # vez de un delay fijo (confirmado insuficiente con evidencia real).
+        campo_busqueda = page.locator(ID_CAMPO_BUSQUEDA)
         page.click("label[for='frmBusquedaCompanias\\:tipoBusqueda\\:1']")
+        for _ in range(20):
+            if campo_busqueda.get_attribute("maxlength") != "6":
+                break
+            page.wait_for_timeout(300)
         self.delay_humano(0.5, 1.0)
 
         seleccionado = self._buscar_y_seleccionar_empresa(page, cliente.identificacion)
@@ -91,8 +101,17 @@ class ScraperSCVSCompanias(BaseScraper):
         campo = page.locator(ID_CAMPO_BUSQUEDA)
         campo.wait_for(state="visible", timeout=8000)
         campo.click()
-        campo.type(ruc, delay=100)
-        self.delay_humano(1.5, 2.5)
+        campo.fill("")
+        campo.type(ruc, delay=150)
+        self.verificar_campo_lleno(page, ID_CAMPO_BUSQUEDA, ruc)
+
+        valor_escrito = campo.input_value().strip()
+        if valor_escrito != ruc:
+            raise ScraperError(
+                f"[{self.nombre_sitio}] El campo de busqueda quedo con '{valor_escrito}' en vez de '{ruc}' - "
+                f"fallo mecanico de tipeo, no es un resultado real de 'no registrado'.",
+                resultado=ResultadoConsulta.ERROR_CAPTCHA,
+            )
 
         panel_sugerencias = page.locator(ID_PANEL_SUGERENCIAS)
         try:

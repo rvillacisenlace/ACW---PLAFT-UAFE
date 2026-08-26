@@ -79,7 +79,7 @@ class ScraperIESS(BaseScraper):
         resultado = {"hay_registro": hay_registro, "ruta_pdf": "", "iess": mensaje_error, "deuda_obligaciones": ""}
         if pdf_bytes is not None:
             from src.documentos.almacenamiento import guardar_pdf_local
-            ruta_guardada = guardar_pdf_local(pdf_bytes, cliente.identificacion, "certificado_iess", carpeta_sitio="iess")
+            ruta_guardada = guardar_pdf_local(pdf_bytes, cliente.identificacion_evidencia or cliente.identificacion, "certificado_iess", carpeta_sitio="iess", subcarpeta=cliente.subcarpeta_evidencia)
             resultado["ruta_pdf"] = ruta_guardada
 
             try:

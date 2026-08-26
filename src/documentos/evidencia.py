@@ -7,7 +7,7 @@ from PIL import Image, ImageDraw
 
 def capturar_evidencia(
     page: Page, identificacion_cliente: str, sitio: str, carpeta_sitio: str,
-    base_dir: str = "./data/staging", pagina_completa: bool = True
+    base_dir: str = "./data/staging", pagina_completa: bool = True, subcarpeta: str = ""
 ) -> dict:
     """
     Captura screenshot de la página actual, agrega overlay de fecha/hora,
@@ -22,10 +22,11 @@ def capturar_evidencia(
     nota histórica: necesario para visores de PDF embebidos).
     """
     ahora = datetime.now()
-    carpeta = os.path.join(
-        base_dir, "DebidaDiligencia", str(ahora.year), f"{ahora.month:02d}",
-        identificacion_cliente, carpeta_sitio
-    )
+    partes_carpeta = [base_dir, "DebidaDiligencia", str(ahora.year), f"{ahora.month:02d}", identificacion_cliente]
+    if subcarpeta:
+        partes_carpeta.append(subcarpeta)
+    partes_carpeta.append(carpeta_sitio)
+    carpeta = os.path.join(*partes_carpeta)
     os.makedirs(carpeta, exist_ok=True)
 
     timestamp_archivo = ahora.strftime("%Y%m%d_%H%M%S")

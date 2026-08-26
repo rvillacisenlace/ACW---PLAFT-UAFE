@@ -39,12 +39,12 @@ class ScraperMunicipioManta(BaseScraper):
         else:
             return DeudaMunicipal(registrado=False, mensaje="Identificación con formato inesperado.")
 
-        resultado_cedula = self._consultar_una_vez(page, cedula)
-        resultado_ruc = self._consultar_una_vez(page, ruc)
+        resultado_cedula = self._consultar_una_vez(page, cedula, cliente.identificacion)
+        resultado_ruc = self._consultar_una_vez(page, ruc, cliente.identificacion)
 
         return self._combinar_resultados(resultado_cedula, resultado_ruc)
 
-    def _consultar_una_vez(self, page: Page, identificacion: str) -> DeudaMunicipal:
+    def _consultar_una_vez(self, page: Page, identificacion: str, identificacion_evidencia: str) -> DeudaMunicipal:
         page.goto(self.url_base)
         self.delay_humano(1.5, 2.5)
 
@@ -52,6 +52,7 @@ class ScraperMunicipioManta(BaseScraper):
         self.delay_humano(0.5, 1.0)
 
         page.fill("#txtclave", identificacion)
+        self.verificar_campo_lleno(page, "#txtclave", identificacion)
         self.delay_humano(0.5, 1.0)
 
         if self.tiene_captcha(page):
@@ -60,7 +61,7 @@ class ScraperMunicipioManta(BaseScraper):
         page.click("#btnbuscar_2")
         self.delay_humano(2.5, 3.5)
 
-        return self._extraer_resultado(page, identificacion)
+        return self._extraer_resultado(page, identificacion_evidencia)
 
     def _combinar_resultados(self, resultado_a: DeudaMunicipal, resultado_b: DeudaMunicipal) -> DeudaMunicipal:
         if resultado_a.tiene_deuda and not resultado_b.tiene_deuda:

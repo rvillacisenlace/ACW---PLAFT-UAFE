@@ -28,16 +28,17 @@ class ScraperMunicipioEsmeraldas(BaseScraper):
         else:
             return DeudaMunicipal(registrado=False, mensaje="Identificación con formato inesperado.")
 
-        resultado_cedula = self._consultar_una_vez(page, cedula)
-        resultado_ruc = self._consultar_una_vez(page, ruc)
+        resultado_cedula = self._consultar_una_vez(page, cedula, cliente.identificacion)
+        resultado_ruc = self._consultar_una_vez(page, ruc, cliente.identificacion)
 
         return self._combinar_resultados(resultado_cedula, resultado_ruc)
 
-    def _consultar_una_vez(self, page: Page, identificacion: str) -> DeudaMunicipal:
+    def _consultar_una_vez(self, page: Page, identificacion: str, identificacion_evidencia: str) -> DeudaMunicipal:
         page.goto(self.url_base)
         self.delay_humano(1.5, 2.5)
 
         page.fill("#txtid", identificacion)
+        self.verificar_campo_lleno(page, "#txtid", identificacion)
         self.delay_humano(0.5, 1.0)
 
         page.click("button:has-text('Consultar')")
@@ -53,7 +54,7 @@ class ScraperMunicipioEsmeraldas(BaseScraper):
         except Exception:
             valor_total = ""
 
-        capturar_evidencia(page, identificacion, sitio="sitio_municipio_esmeraldas_resultado", carpeta_sitio="municipio_esmeraldas")
+        capturar_evidencia(page, identificacion_evidencia, sitio="sitio_municipio_esmeraldas_resultado", carpeta_sitio="municipio_esmeraldas")
 
         tiene_deuda = valor_total not in ("$ 0.00", "$0.00", "")
         return DeudaMunicipal(registrado=True, tiene_deuda=tiene_deuda, valor_total=valor_total)

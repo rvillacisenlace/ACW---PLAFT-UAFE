@@ -111,9 +111,10 @@ class ScraperContraloria(BaseScraper):
             self.delay_humano(1.0, 1.5)
 
             capturar_evidencia(
-                page, cliente.identificacion,
+                page, cliente.identificacion_evidencia or cliente.identificacion,
                 sitio=f"sitio_contraloria_pagina{numero_pagina}",
-                carpeta_sitio="contraloria"
+                carpeta_sitio="contraloria",
+                subcarpeta=cliente.subcarpeta_evidencia,
             )
 
             if page.locator("td.dataTables_empty").count() > 0:

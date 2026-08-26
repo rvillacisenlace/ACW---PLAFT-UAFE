@@ -93,10 +93,16 @@ def procesar_cliente(page, cliente: Cliente) -> dict:
                     identificacion=cadena["identificacion"],
                     tipo_persona=TipoPersona.NATURAL,
                     nombres_completos=cadena["nombre"],
+                    identificacion_evidencia=cliente.identificacion,
+                    subcarpeta_evidencia=f"representante_legal_{cadena['identificacion']}",
                 )
                 print(f"[{cliente.identificacion}] Representante legal resuelto: {cadena['nombre']} ({cadena['identificacion']})")
             else:
-                print(f"[{cliente.identificacion}] ADVERTENCIA: no se resolvió representante legal - {cadena['mensaje']}")
+                # No resolver el RL es un caso real de revision manual -
+                # sin esto, quedaba marcado "OK" en el resumen/Excel aunque
+                # nunca se pudo verificar quien es el representante legal.
+                resultados["cadena_representante_legal"]["requiere_revision_manual"] = True
+                print(f"[{cliente.identificacion}] ADVERTENCIA: no se resolvió representante legal - {cadena['mensaje']} - marcado para revisión manual")
         except Exception as e:
             resultados["cadena_representante_legal"] = {"error": str(e), "requiere_revision_manual": True}
             print(f"[{cliente.identificacion}] FALLÓ cadena de representante legal: {e}")
@@ -140,7 +146,7 @@ def procesar_cliente(page, cliente: Cliente) -> dict:
 
 def main():
     clientes_prueba = [
-        Cliente(identificacion="1001322518", tipo_persona=TipoPersona.NATURAL, nombres_completos="Torres Gordillo Diego Patricio"),
+        #Cliente(identificacion="1001322518", tipo_persona=TipoPersona.NATURAL, nombres_completos="Torres Gordillo Diego Patricio"),
         Cliente(identificacion="0990014094001", tipo_persona=TipoPersona.JURIDICA, razon_social="INDUAUTO S.A."),
     ]
 

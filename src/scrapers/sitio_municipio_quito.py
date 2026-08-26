@@ -31,6 +31,7 @@ class ScraperMunicipioQuito(BaseScraper):
         self.delay_humano(0.5, 1.0)
 
         page.fill("#TcOpciones_TbpApellidosNombres_TxtApellidosNombres", nombre_o_razon_social)
+        self.verificar_campo_lleno(page, "#TcOpciones_TbpApellidosNombres_TxtApellidosNombres", nombre_o_razon_social)
         self.delay_humano(0.5, 1.0)
 
         self._resolver_captcha_manual(page)
