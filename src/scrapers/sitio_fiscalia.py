@@ -30,6 +30,7 @@ ID_SELECT_CRITERIO = "#tipoBusqueda"
 ID_CAMPO_BUSQUEDA = "#valorBusqueda"
 ID_BOTON_BUSCAR = "#btnBuscar"
 ID_CONTENEDOR_RESULTADOS = "#resultados"
+ID_CONTENEDOR_PAGINACION = "#paginacion"
 
 
 class ScraperFiscalia(BaseScraper):
@@ -114,14 +115,24 @@ class ScraperFiscalia(BaseScraper):
             self.delay_humano(0.3, 0.6)
             return []
 
-        self._expandir_todos_los_involucrados(page)
+        total_paginas = self._obtener_total_paginas(page)
+        denuncias_todas = []
 
-        capturar_evidencia(
-            page, cliente.identificacion_evidencia or cliente.identificacion,
-            sitio="sitio2_fiscalia_noticias", carpeta_sitio="fiscalia",
-            subcarpeta=cliente.subcarpeta_evidencia,
-        )
-        return self._extraer_denuncias(page, cliente)
+        for numero_pagina in range(1, total_paginas + 1):
+            if numero_pagina > 1:
+                page.locator(f'a[onclick="mostrarPagina({numero_pagina}); return false;"]').first.click()
+                self.delay_humano(1.0, 1.5)
+
+            self._expandir_todos_los_involucrados(page)
+
+            capturar_evidencia(
+                page, cliente.identificacion_evidencia or cliente.identificacion,
+                sitio=f"sitio2_fiscalia_noticias_pagina{numero_pagina}", carpeta_sitio="fiscalia",
+                subcarpeta=cliente.subcarpeta_evidencia,
+            )
+            denuncias_todas.extend(self._extraer_denuncias(page, cliente))
+
+        return denuncias_todas
 
     def _expandir_todos_los_involucrados(self, page: Page) -> None:
         """
@@ -147,6 +158,22 @@ class ScraperFiscalia(BaseScraper):
                 print(f"    [advertencia] no se pudo expandir un panel de involucrados: {type(e).__name__} - continuando con el resto")
                 break
             page.wait_for_timeout(300)
+
+    def _obtener_total_paginas(self, page: Page) -> int:
+        """
+        Lee los links numericos de #paginacion y toma el mayor como
+        total de paginas. Si no existe el bloque de paginacion (pocos
+        resultados, una sola pagina), devuelve 1. Los links "Siguiente"/
+        "Ultima"/"Anterior"/"Primera" (si existen) se descartan por no
+        ser numericos.
+        """
+        if page.locator(ID_CONTENEDOR_PAGINACION).count() == 0:
+            return 1
+
+        textos = page.locator(f"{ID_CONTENEDOR_PAGINACION} a.page-link").all_inner_texts()
+        numeros = [int(t.strip()) for t in textos if t.strip().isdigit()]
+        return max(numeros) if numeros else 1
+
     def _extraer_denuncias(self, page: Page, cliente: Cliente) -> list[Denuncia]:
         tarjetas = page.locator(f"{ID_CONTENEDOR_RESULTADOS} > div.card").all()
 

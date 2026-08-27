@@ -40,6 +40,15 @@ class ScraperSCVSCompanias(BaseScraper):
         # vez de un delay fijo (confirmado insuficiente con evidencia real).
         campo_busqueda = page.locator(ID_CAMPO_BUSQUEDA)
         page.click("label[for='frmBusquedaCompanias\\:tipoBusqueda\\:1']")
+        try:
+            page.wait_for_load_state("networkidle", timeout=8000)
+        except Exception:
+            pass
+        for _ in range(20):
+            if page.locator(ID_CAMPO_BUSQUEDA).get_attribute("maxlength") != "6":
+                break
+            page.wait_for_timeout(300)
+        self.delay_humano(0.5, 1.0)
         for _ in range(20):
             if campo_busqueda.get_attribute("maxlength") != "6":
                 break
@@ -105,14 +114,6 @@ class ScraperSCVSCompanias(BaseScraper):
         campo.type(ruc, delay=150)
         self.verificar_campo_lleno(page, ID_CAMPO_BUSQUEDA, ruc)
 
-        valor_escrito = campo.input_value().strip()
-        if valor_escrito != ruc:
-            raise ScraperError(
-                f"[{self.nombre_sitio}] El campo de busqueda quedo con '{valor_escrito}' en vez de '{ruc}' - "
-                f"fallo mecanico de tipeo, no es un resultado real de 'no registrado'.",
-                resultado=ResultadoConsulta.ERROR_CAPTCHA,
-            )
-
         panel_sugerencias = page.locator(ID_PANEL_SUGERENCIAS)
         try:
             panel_sugerencias.first.wait_for(state="visible", timeout=8000)
@@ -122,7 +123,7 @@ class ScraperSCVSCompanias(BaseScraper):
         panel_sugerencias.first.click()
         self.delay_humano(0.5, 1.0)
         return True
-
+    
     def _resolver_altcha(self, page: Page, selector_checkbox: str) -> None:
         checkbox = page.locator(selector_checkbox)
         checkbox.wait_for(state="visible", timeout=10000)
