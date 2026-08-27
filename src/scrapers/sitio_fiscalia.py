@@ -36,9 +36,8 @@ ID_CONTENEDOR_PAGINACION = "#paginacion"
 class ScraperFiscalia(BaseScraper):
     nombre_sitio = "Fiscalía"
 
-    def __init__(self, context, url_base: str, url_base_totem: str):
+    def __init__(self, context, url_base: str):
         super().__init__(context, url_base)
-        self.url_base_totem = url_base_totem  # legado, ya no se usa en este flujo
 
     def tiene_captcha(self, page: Page) -> bool:
         return False

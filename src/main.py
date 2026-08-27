@@ -38,29 +38,43 @@ from src.scrapers.sitio_municipio_manta import ScraperMunicipioManta
 from src.scrapers.sitio_sercop_proveedor import ScraperSERCOPProveedor
 from src.scrapers.sitio_sercop_certificados import ScraperSERCOPCertificados
 from src.scrapers.cadena_representante import resolver_representante_legal
+from src.core.excel_writer import LocalExcelWriter
 
+RUTA_EXCEL_LOCAL = "templates/Matriz Revisión Clientes.xlsx"
 
-URLS = {
-    "funcion_judicial": "https://consultas.funcionjudicial.gob.ec/informacionjudicial/public/informacion.jsf",
-    "fiscalia_totem": "https://www.gestiondefiscalias.gob.ec/siaf/informacion/web/",
-    "fiscalia_noticias": "https://www.gestiondefiscalias.gob.ec/siaf/informacion/web/noticiasdelito/index.php",
-    "sentenciados": "https://consultas.funcionjudicial.gob.ec/informacionjudicialindividual/pages/index.jsf#!/",
-    "antecedentes_penales": "https://certificados.ministeriodelinterior.gob.ec/gestorcertificados/antecedentes/",
-    "sri_ruc": "https://srienlinea.sri.gob.ec/sri-en-linea/SriRucWeb/ConsultaRuc/Consultas/consultaRuc",
-    "sri_deudas": "https://srienlinea.sri.gob.ec/sri-en-linea/SriPagosWeb/ConsultaDeudasFirmesImpugnadas/Consultas/consultaDeudasFirmesImpugnadas",
-    "sri_estado_tributario": "https://srienlinea.sri.gob.ec/sri-en-linea/SriDeclaracionesWeb/EstadoTributario/Consultas/consultaEstadoTributario",
-    "salud": "https://coberturasalud.msp.gob.ec/",
-    "iess": "https://www.iess.gob.ec/empleador-web/pages/morapatronal/certificadoCumplimientoPublico.jsf",
-    "scvs_companias": "https://appscvsgen.supercias.gob.ec/consultaCompanias/societario/busquedaCompanias.jsf",
-    "contraloria": "https://www.contraloria.gob.ec/Consultas/DeclaracionesJuradas",
-    "municipio_quito": "https://pago.quito.gob.ec/",
-    "municipio_cuenca": "https://enlinea.cuenca.gob.ec/#/impuestos",
-    "municipio_ambato": "https://gadmaapps.ambato.gob.ec:9001/apex/f?p=102:9:2530006028746:::9::",
-    "municipio_esmeraldas": "https://consulta.esmeraldas.gob.ec/index.jsp",
-    "municipio_manta": "https://portalciudadano.manta.gob.ec/consulta",
-    "sercop_proveedor": "https://www.compraspublicas.gob.ec/ProcesoContratacion/compras/EP/BusquedaProveedorCpc.cpe",
-    "sercop_certificados": "https://www.compraspublicas.gob.ec/ProcesoContratacion/compras/FO/formularioCertificados.cpe",
+# Todas las URLs vienen de la Hoja de Parametrizacion, sin fallback
+# hardcodeado (mismo criterio que el proyecto hermano): si falta algun
+# parametro, el programa se detiene con un error claro en vez de seguir
+# corriendo en silencio contra una URL vieja/desactualizada.
+_parametros = LocalExcelWriter(RUTA_EXCEL_LOCAL).leer_parametrizacion()
+
+_MAPEO_URLS = {
+    "funcion_judicial": "URL_FUNCION_JUDICIAL",
+    "fiscalia_noticias": "URL_FISCALIA_NOTICIAS",
+    "sentenciados": "URL_SENTENCIADOS",
+    "antecedentes_penales": "URL_ANTECEDENTES_PENALES",
+    "sri_ruc": "URL_SRI_RUC",
+    "sri_deudas": "URL_SRI_DEUDAS",
+    "sri_estado_tributario": "URL_SRI_ESTADO_TRIBUTARIO",
+    "salud": "URL_SALUD",
+    "iess": "URL_IESS",
+    "scvs_companias": "URL_SCVS_COMPANIAS",
+    "contraloria": "URL_CONTRALORIA",
+    "municipio_quito": "URL_MUNICIPIO_QUITO",
+    "municipio_cuenca": "URL_MUNICIPIO_CUENCA",
+    "municipio_ambato": "URL_MUNICIPIO_AMBATO",
+    "municipio_esmeraldas": "URL_MUNICIPIO_ESMERALDAS",
+    "municipio_manta": "URL_MUNICIPIO_MANTA",
+    "sercop_proveedor": "URL_SERCOP_PROVEEDOR",
+    "sercop_certificados": "URL_SERCOP_CERTIFICADOS",
 }
+
+_faltantes = [param for param in _MAPEO_URLS.values() if not _parametros.get(param)]
+if _faltantes:
+    print(f"ERROR: faltan estos parámetros en la Hoja de Parametrización del Excel: {', '.join(_faltantes)}")
+    raise SystemExit(1)
+
+URLS = {clave: _parametros[param] for clave, param in _MAPEO_URLS.items()}
 
 def procesar_cliente(page, cliente: Cliente) -> dict:
     resultados = {}
@@ -137,7 +151,7 @@ def procesar_cliente(page, cliente: Cliente) -> dict:
 
     # --- 9. Función Judicial (incluye Fiscalía dentro del mismo Sitio 8) ---
     _ejecutar("funcion_judicial", lambda: ScraperFuncionJudicial(context=page.context, url_base=URLS["funcion_judicial"]).buscar_y_procesar_cliente(page, cliente))
-    _ejecutar("fiscalia", lambda: ScraperFiscalia(context=page.context, url_base=URLS["fiscalia_noticias"], url_base_totem=URLS["fiscalia_totem"]).buscar_cliente(page, cliente))
+    _ejecutar("fiscalia", lambda: ScraperFiscalia(context=page.context, url_base=URLS["fiscalia_noticias"]).buscar_cliente(page, cliente))
 
     # --- 10. Contraloría (persona: cliente o representante) ---
     _ejecutar("contraloria", lambda: ScraperContraloria(context=page.context, url_base=URLS["contraloria"]).buscar_cliente(page, cliente_para_persona))
