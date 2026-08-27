@@ -76,11 +76,11 @@ class ScraperMunicipioAmbato(BaseScraper):
         """identificacion: valor para BUSCAR (cedula o RUC). identificacion_evidencia:
         SIEMPRE cliente.identificacion original - una sola carpeta de evidencia
         por cliente, sin importar la variante usada para buscar."""
-        self.verificar_campo_lleno(page, "#P9_VALOR", identificacion)
         page.goto(self.url_base)
         self.delay_humano(1.5, 2.5)
 
         page.fill("#P9_VALOR", identificacion)
+        self.verificar_campo_lleno(page, "#P9_VALOR", identificacion)
         self.delay_humano(0.5, 1.0)
 
         page.click("#B10934304849187813087")

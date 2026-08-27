@@ -73,9 +73,9 @@ class ScraperMunicipioCuenca(BaseScraper):
         Confirmado bug real: antes se usaba 'identificacion' (variable),
         partiendo la evidencia en 2 carpetas para el mismo cliente.
         """
-        self.verificar_campo_lleno(page, "#inputCampo", identificacion)
         page.wait_for_selector("#inputCampo", state="visible", timeout=25000)
         page.fill("#inputCampo", identificacion)
+        self.verificar_campo_lleno(page, "#inputCampo", identificacion)
         self.delay_humano(0.5, 1.0)
 
         boton_consultar = page.locator("button[aria-label='Consultar']")
