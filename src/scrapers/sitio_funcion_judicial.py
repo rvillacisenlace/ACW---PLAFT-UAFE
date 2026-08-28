@@ -518,37 +518,44 @@ class ScraperFuncionJudicial(BaseScraper):
         boton_movimientos = f"#form1\\:dataTableJuicios2\\:{indice_fila}\\:btnAbrirMovimientos"
         page.click(boton_movimientos)
 
-        botones_ver_detalle = page.locator("#formJuicioDialogo").get_by_title("Ver Detalle del Incidente del Proceso Judicial")
-        botones_ver_detalle.first.wait_for(state="visible", timeout=15000)
-        self.delay_humano(0.5, 1.0)
-
-        orden_por_fecha = self._orden_movimientos_por_fecha(page)
-        intentos_en_orden = orden_por_fecha[:max_movimientos_a_probar]
-
         pdfs_obtenidos = []
         detalle_final = None
 
-        for indice_movimiento in intentos_en_orden:
-            if len(pdfs_obtenidos) >= max_pdfs_deseados:
-                break
-            try:
-                contenido_pdf, detalle = self._intentar_descargar_movimiento(page, indice_movimiento)
-                pdfs_obtenidos.append(contenido_pdf)
-                if detalle_final is None:
-                    detalle_final = detalle
-            except ScraperError as e:
-                print(f"    Movimiento {indice_movimiento} sin PDF, probando el siguiente... ({e})")
-                continue
-            except Exception as e:
-                print(f"    Movimiento {indice_movimiento} falló inesperadamente, probando el siguiente... ({type(e).__name__}: {e})")
-                continue
-
         try:
-            page.click("#formJuicioDialogo\\:btnCancelar", timeout=5000)
-            page.wait_for_selector("#formJuicioDialogo", state="hidden", timeout=5000)
-        except Exception:
-            pass
-        self.delay_humano(0.3, 0.6)
+            botones_ver_detalle = page.locator("#formJuicioDialogo").get_by_title("Ver Detalle del Incidente del Proceso Judicial")
+            botones_ver_detalle.first.wait_for(state="visible", timeout=15000)
+            self.delay_humano(0.5, 1.0)
+
+            orden_por_fecha = self._orden_movimientos_por_fecha(page)
+            intentos_en_orden = orden_por_fecha[:max_movimientos_a_probar]
+
+            for indice_movimiento in intentos_en_orden:
+                if len(pdfs_obtenidos) >= max_pdfs_deseados:
+                    break
+                try:
+                    contenido_pdf, detalle = self._intentar_descargar_movimiento(page, indice_movimiento)
+                    pdfs_obtenidos.append(contenido_pdf)
+                    if detalle_final is None:
+                        detalle_final = detalle
+                except ScraperError as e:
+                    print(f"    Movimiento {indice_movimiento} sin PDF, probando el siguiente... ({e})")
+                    continue
+                except Exception as e:
+                    print(f"    Movimiento {indice_movimiento} falló inesperadamente, probando el siguiente... ({type(e).__name__}: {e})")
+                    continue
+        finally:
+            # SIEMPRE intentar cerrar el modal, sin importar en que punto
+            # fallo lo anterior (incluyendo el wait_for inicial del
+            # contenido) - confirmado con evidencia real: un timeout ahi
+            # dejaba el modal abierto, bloqueando el clic del SIGUIENTE
+            # caso con "intercepts pointer events" (el overlay del modal
+            # anterior tapaba el boton del caso siguiente).
+            try:
+                page.click("#formJuicioDialogo\\:btnCancelar", timeout=5000)
+                page.wait_for_selector("#formJuicioDialogo", state="hidden", timeout=5000)
+            except Exception:
+                pass
+            self.delay_humano(0.3, 0.6)
 
         if not pdfs_obtenidos:
             raise ScraperError(

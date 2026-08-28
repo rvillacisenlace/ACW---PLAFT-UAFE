@@ -187,7 +187,18 @@ class ScraperAntecedentesPenales(BaseScraper):
             ruta_guardada = guardar_pdf_local(pdf_bytes, cliente.identificacion_evidencia or cliente.identificacion, "certificado_antecedentes_penales", carpeta_sitio="antecedentes_penales", subcarpeta=cliente.subcarpeta_evidencia)
             resultado.ruta_pdf = ruta_guardada
         except Exception as e:
-            print(f"[{cliente.identificacion}] Falló descarga del certificado: {type(e).__name__}: {e}")
+            # Decision explicita: si falla la descarga del certificado
+            # PDF, todo el sitio se trata como fallido (aunque
+            # nombre/posee_antecedentes ya se hayan extraido bien) -
+            # se prioriza consistencia con el resto de sitios (binario
+            # OK/revision manual) sobre preservar el dato parcial.
+            # Confirmado con evidencia real: antes esto se tragaba en
+            # silencio y el sitio quedaba marcado "OK" pese a faltar
+            # la evidencia del PDF.
+            raise ScraperError(
+                f"[{self.nombre_sitio}] Falló descarga del certificado PDF: {type(e).__name__}: {e}",
+                resultado=ResultadoConsulta.ERROR_DESCONOCIDO,
+            ) from e
 
         return resultado
 

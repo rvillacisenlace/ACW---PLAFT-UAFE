@@ -390,6 +390,12 @@ class LocalExcelWriter(ExcelWriter):
         col = self._col("ESTADO")
         self._escribir_valor_con_estilo(fila_excel, col, estado)
 
+    def escribir_sitios_a_revisar(self, fila_excel: int, texto: str) -> None:
+        """Columna SITIOS A REVISAR (GO) - detalle legible de que sitios
+        requieren revision manual cuando ESTADO = 'Completado con pendientes'."""
+        col = self._col("SITIOS A REVISAR")
+        self._escribir_valor_con_estilo(fila_excel, col, texto)
+
     def escribir_detalle_procesos(self, cliente, procesos_judiciales: list, denuncias: list) -> None:
         raise NotImplementedError(
             "escribir_detalle_procesos no esta implementado en LocalExcelWriter "
