@@ -229,3 +229,19 @@ class ScraperFiscalia(BaseScraper):
             return ""
         siguiente = celda_th.locator("xpath=following-sibling::td[1]")
         return siguiente.inner_text().strip() if siguiente.count() > 0 else ""
+
+    def resumen_general_por_denuncia(self, denuncias: list[Denuncia]) -> str:
+        """
+        Resumen de todas las denuncias en las que aparece el cliente,
+        para la columna FISCALIA del bloque "Revision bases de datos
+        publicas". Formato: "NUMERO - DELITO (ROL)" por cada denuncia,
+        separadas por " / ".
+        """
+        if not denuncias:
+            return "No consta"
+
+        partes = [
+            f"{d.numero_noticia_delito} - {d.delito} ({d.estado_rol_cliente or 'SIN ROL IDENTIFICADO'})"
+            for d in denuncias
+        ]
+        return " / ".join(partes)

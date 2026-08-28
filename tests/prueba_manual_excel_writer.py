@@ -14,9 +14,7 @@ print("URL_ANTECEDENTES_PENALES:", parametros.get("URL_ANTECEDENTES_PENALES"))
 
 # Prueba de escritura - OJO: esto SÍ modifica el archivo real al guardar.
 # Comenta las siguientes 2 líneas si solo quieres probar lectura primero.
-writer.escribir_antecedentes_penales(fila_excel=clientes[0].fila_excel, posee_antecedentes=False)
-writer.guardar()
-
+# writer.escribir_antecedentes_penales(fila_excel=clientes[0].fila_excel, posee_antecedentes=False)
 # --- Prueba aislada: escribir_sri_ruc ---
 datos_sri_ejemplo = {
     "razon_social": "TORRES GORDILLO DIEGO PATRICIO",
@@ -160,3 +158,34 @@ writer.escribir_estado_final(fila_excel=5, resultados=resultados_con_pendiente)
 
 writer.guardar()
 print("\nescribir_estado_final probado - fila 4 debe decir 'Completado', fila 5 'Completado con pendientes'")
+
+resultados_ejemplo = [
+    {"apellidos_nombres": "ALVAREZ HENRIQUES AQUILES DAVID", "cargo": "ALCALDE", "entidad": "GOBIERNO AUTONOMO DESCENTRALIZADO MUNICIPAL DE GUAYAQUIL", "año": "2025"},
+    {"apellidos_nombres": "ALVAREZ HENRIQUES AQUILES DAVID", "cargo": "ALCALDE", "entidad": "GOBIERNO AUTÓNOMO DESCENTRALIZADO MUNICIPAL DE GUAYAQUIL", "año": "2024"},
+    {"apellidos_nombres": "ALVAREZ HENRIQUES AQUILES DAVID", "cargo": "ALCALDE DE GUAYAQUIL", "entidad": "M.I. MUNICIPIO DE GUAYAQUIL", "año": "2024"},
+    {"apellidos_nombres": "ALVAREZ HENRIQUES AQUILES DAVID", "cargo": "ALCALDE", "entidad": "GOBIERNO AUTÓNOMO DESCENTRALIZADO MUNICIPAL DE GUAYAQUIL", "año": "2023"},
+]
+
+from src.scrapers.sitio_contraloria import ScraperContraloria
+scraper = ScraperContraloria(context=None, url_base="")
+resumen_general = scraper.resumen_general_por_cargo(resultados_ejemplo)
+print("Resumen general:", resumen_general)
+
+writer.escribir_contraloria_resumen_general(fila_excel=4, resumen_general=resumen_general)
+writer.guardar()
+
+from src.core.models import Denuncia
+
+denuncias_ejemplo = [
+    Denuncia(numero_noticia_delito="170101813030869", delito="EXTORSION", estado_rol_cliente="DENUNCIANTE"),
+    Denuncia(numero_noticia_delito="170101819060571", delito="DEFRAUDACIÓN TRIBUTARIA", estado_rol_cliente="SOSPECHOSO"),
+]
+
+from src.scrapers.sitio_fiscalia import ScraperFiscalia
+scraper_fiscalia = ScraperFiscalia(context=None, url_base="")
+resumen_fiscalia = scraper_fiscalia.resumen_general_por_denuncia(denuncias_ejemplo)
+print("Resumen Fiscalía:", resumen_fiscalia)
+
+writer.escribir_fiscalia_resumen_general(fila_excel=4, resumen_general=resumen_fiscalia)
+writer.guardar()
+print("\nescribir_fiscalia_resumen_general probado - revisa fila 4, columna FV")

@@ -211,3 +211,38 @@ class ScraperContraloria(BaseScraper):
             "tiempo": str(len(anios_en_ese_cargo)),
             "ultimo_anio_en_cargo": str(max(anios_en_ese_cargo)),
         }
+
+    def resumen_general_por_cargo(self, resultados: list[dict]) -> str:
+        """
+        Resumen de TODOS los cargos historicos (sin filtrar por vigencia),
+        para la columna CONTRALORIA del bloque "Revision bases de datos
+        publicas". Formato: "CARGO - ENTIDAD (N años)" por cada cargo
+        distinto, separados por " / ", mas reciente primero. Usa la
+        misma normalizacion de tildes/mayusculas que resumir_declaraciones()
+        para agrupar variantes del mismo cargo, mostrando el texto original.
+        """
+        if not resultados:
+            return "No consta"
+
+        def clave_normalizada(r):
+            return f"{self._normalizar_texto(r['cargo'])} - {self._normalizar_texto(r['entidad'])}"
+
+        def texto_original(r):
+            return f"{r['cargo']} - {r['entidad']}"
+
+        grupos = {}
+        for r in resultados:
+            clave = clave_normalizada(r)
+            anio = self._parsear_anio(r["año"])
+            if clave not in grupos:
+                grupos[clave] = {"texto": texto_original(r), "anios": set(), "anio_max": 0}
+            if anio is not None:
+                grupos[clave]["anios"].add(anio)
+                grupos[clave]["anio_max"] = max(grupos[clave]["anio_max"], anio)
+
+        grupos_ordenados = sorted(grupos.values(), key=lambda g: g["anio_max"], reverse=True)
+        partes = [
+            f"{g['texto']} ({','.join(str(a) for a in sorted(g['anios'], reverse=True))})"
+            for g in grupos_ordenados
+        ]
+        return " / ".join(partes)

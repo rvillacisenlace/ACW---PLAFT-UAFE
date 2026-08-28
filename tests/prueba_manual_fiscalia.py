@@ -11,7 +11,7 @@ with sync_playwright() as p:
     context = browser.new_context()
     page = context.new_page()
 
-    scraper = ScraperFiscalia(context=context, url_base=URL_FISCALIA_NOTICIAS, url_base_totem=URL_FISCALIA_TOTEM)
+    scraper = ScraperFiscalia(context=context, url_base=URL_FISCALIA_NOTICIAS)
     cliente = Cliente(identificacion="1793232200001", tipo_persona=TipoPersona.JURIDICA, razon_social="AVALOR HOLDING S.A.S.")
 
     denuncias = scraper.buscar_cliente(page, cliente)
