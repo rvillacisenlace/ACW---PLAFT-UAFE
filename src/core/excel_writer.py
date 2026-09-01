@@ -396,6 +396,12 @@ class LocalExcelWriter(ExcelWriter):
         col = self._col("SITIOS A REVISAR")
         self._escribir_valor_con_estilo(fila_excel, col, texto)
 
+    def escribir_ruta_evidencia(self, fila_excel: int, ruta: str) -> None:
+        """Columna RUTA EVIDENCIA - ruta a la carpeta raiz de evidencia
+        de este cliente, para que el usuario la encuentre facil."""
+        col = self._col("RUTA EVIDENCIA")
+        self._escribir_valor_con_estilo(fila_excel, col, ruta)
+
     def escribir_detalle_procesos(self, cliente, procesos_judiciales: list, denuncias: list) -> None:
         raise NotImplementedError(
             "escribir_detalle_procesos no esta implementado en LocalExcelWriter "
@@ -587,6 +593,14 @@ class GraphAPIWriter(ExcelWriter):
     def escribir_antecedentes_penales(self, fila_excel: int, posee_antecedentes: bool) -> None:
         col = self._col("Posee antecedentes penales")
         self._escribir_valor_con_estilo(fila_excel, col, "SI" if posee_antecedentes else "NO")
+
+    def escribir_sitios_a_revisar(self, fila_excel: int, texto: str) -> None:
+        col = self._col("SITIOS A REVISAR")
+        self._escribir_valor_con_estilo(fila_excel, col, texto)
+
+    def escribir_ruta_evidencia(self, fila_excel: int, ruta: str) -> None:
+        col = self._col("RUTA EVIDENCIA")
+        self._escribir_valor_con_estilo(fila_excel, col, ruta)
 
     # Constantes de columna 0-based, EQUIVALENTES a las de LocalExcelWriter
     # (que son 1-based, convencion de openpyxl) menos 1. Ver comentarios

@@ -16,9 +16,7 @@ sitio NUNCA detiene el resto (principio de diseño confirmado).
 """
 from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth
-
 from src.core.models import Cliente, TipoPersona
-
 from src.scrapers.sitio_funcion_judicial import ScraperFuncionJudicial
 from src.scrapers.sitio_fiscalia import ScraperFiscalia
 from src.scrapers.sitio_sentenciados import ScraperSentenciados
@@ -39,6 +37,9 @@ from src.scrapers.sitio_sercop_proveedor import ScraperSERCOPProveedor
 from src.scrapers.sitio_sercop_certificados import ScraperSERCOPCertificados
 from src.scrapers.cadena_representante import resolver_representante_legal
 from src.core.excel_writer import LocalExcelWriter
+from src.core.contador_diario import limite_alcanzado, incrementar_contador_hoy, obtener_contador_hoy
+from datetime import datetime
+import os
 
 RUTA_EXCEL_LOCAL = "templates/Matriz Revisión Clientes.xlsx"
 
@@ -196,6 +197,15 @@ def _calcular_sitios_a_revisar(resultados: dict) -> str:
     ]
     return " / ".join(nombres) if nombres else "-"
 
+def _calcular_ruta_evidencia(cliente: Cliente) -> str:
+    """Misma logica de carpeta que ya usan capturar_evidencia()/
+    guardar_pdf_local() - carpeta raiz de este cliente, sin el
+    subdirectorio de cada sitio."""
+    ahora = datetime.now()
+    return os.path.abspath(os.path.join(
+        "data/staging", "DebidaDiligencia", str(ahora.year), f"{ahora.month:02d}", cliente.identificacion,
+    ))
+
 def escribir_resultados_excel(writer: LocalExcelWriter, cliente: Cliente, resultados: dict) -> None:
     """
     Traduce el diccionario crudo de resultados (tal como lo arma
@@ -292,6 +302,7 @@ def escribir_resultados_excel(writer: LocalExcelWriter, cliente: Cliente, result
 
     writer.escribir_estado_final(fila, resultados)
     writer.escribir_sitios_a_revisar(fila, _calcular_sitios_a_revisar(resultados))
+    writer.escribir_ruta_evidencia(fila, _calcular_ruta_evidencia(cliente))
 
 
 def main():
@@ -311,8 +322,13 @@ def main():
 
         resumen_final = {}
         for cliente in clientes:
+            if limite_alcanzado():
+                print("\nHA ALCANZADO EL LIMITE DE CONSULTAS DIARIO")
+                break
+
+            incrementar_contador_hoy()
             print(f"\n{'='*70}")
-            print(f"PROCESANDO CLIENTE: {cliente.identificacion} - {cliente.nombre_para_mostrar}")
+            print(f"PROCESANDO CLIENTE: {cliente.identificacion} - {cliente.nombre_para_mostrar} (consulta {obtener_contador_hoy()}/100 hoy)")
             print(f"{'='*70}\n")
 
             resultados = procesar_cliente(page, cliente)

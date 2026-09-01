@@ -91,7 +91,7 @@ class ScraperMunicipioCuenca(BaseScraper):
         # (confirmado que el modal no se cierra solo).
         dialogo_no_registrado = page.locator(f"text={MENSAJE_NO_REGISTRADO}")
         if dialogo_no_registrado.count() > 0:
-            capturar_evidencia(page, identificacion, sitio="sitio_municipio_cuenca_resultado", carpeta_sitio="municipio_cuenca")
+            capturar_evidencia(page, identificacion_evidencia, sitio="sitio_municipio_cuenca_resultado", carpeta_sitio="municipio_cuenca")
 
             try:
                 page.locator("button[aria-label='Aceptar']").click()
@@ -107,7 +107,6 @@ class ScraperMunicipioCuenca(BaseScraper):
         except Exception:
             valor_total = ""
 
-        capturar_evidencia(page, identificacion, sitio="sitio_municipio_cuenca_resultado", carpeta_sitio="municipio_cuenca")
-
+            capturar_evidencia(page, identificacion_evidencia, sitio="sitio_municipio_cuenca_resultado", carpeta_sitio="municipio_cuenca")
         tiene_deuda = valor_total not in ("$ 0.00", "$0.00", "")
         return DeudaMunicipal(registrado=True, tiene_deuda=tiene_deuda, valor_total=valor_total)

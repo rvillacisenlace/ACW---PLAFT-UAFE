@@ -8,7 +8,6 @@ asistente de 2 pantallas (cédula -> motivo de consulta -> resultado).
 import time
 
 from playwright.sync_api import Page
-
 from src.scrapers.base_scraper import BaseScraper, ScraperError
 from src.core.models import Cliente, ResultadoConsulta, AntecedentePenal, TipoPersona
 from src.documentos.evidencia import capturar_evidencia
@@ -17,7 +16,6 @@ from src.captcha.resolver import resolver_hcaptcha_con_2captcha, CaptchaResolver
 from config.settings import cargar_infra_config
 
 MOTIVO_CONSULTA_DEFECTO = "Debida diligencia y cumplimiento normativo PLAFT/UAFE"
-
 
 class ScraperAntecedentesPenales(BaseScraper):
     nombre_sitio = "Antecedentes Penales"
@@ -131,6 +129,14 @@ class ScraperAntecedentesPenales(BaseScraper):
             print(f"    [términos y condiciones] no apareció o no se pudo cerrar: {type(e).__name__}: {e}")
 
     def buscar_cliente(self, page: Page, cliente: Cliente) -> AntecedentePenal:
+        """Envuelve todo el flujo con reintentos - cada reintento vuelve
+        a hacer page.goto() (recarga la pagina desde cero), en vez de
+        fallar directo ante un timeout puntual. Confirmado necesario
+        con evidencia real: timeout en '#txtMotivo' en una corrida
+        real, sitio funcionando normal en el siguiente intento."""
+        return self.ejecutar_con_reintentos(self._intentar_buscar_una_vez, page, cliente)
+
+    def _intentar_buscar_una_vez(self, page: Page, cliente: Cliente) -> AntecedentePenal:
         page.goto(self.url_base)
         self.delay_humano(1.5, 2.5)
 
@@ -204,14 +210,20 @@ class ScraperAntecedentesPenales(BaseScraper):
 
     def _descargar_certificado(self, page: Page) -> bytes:
         """
-        Clic en "Visualizar Certificado" (abre el PDF en pestaña nueva,
-        renderizado en el visor nativo de Chrome). Los datos de esa
-        respuesta NO son legibles vía response.body() de Playwright
-        cuando el PDF se renderiza inline (limitación conocida de
-        Playwright/CDP) - en vez de interceptar la respuesta del
-        navegador, se vuelve a pedir la misma URL directamente por HTTP
-        usando el contexto (comparte cookies/sesión), lo que sí es
-        confiable porque no pasa por el visor de PDF.
+        Clic en "Visualizar Certificado" (abre el PDF en pestaña nueva).
+        Los bytes del PDF NO son legibles vía response.body() de
+        Playwright cuando el PDF se renderiza inline (limitación
+        conocida de Playwright/CDP) - se vuelve a pedir la misma URL
+        directamente por HTTP usando el contexto (comparte cookies).
+
+        NOTA: se probó un enfoque con page.context.route() para evitar
+        la segunda peticion por separado, pero causaba un cuelgue
+        indefinido (sin excepcion, sin timeout) especificamente dentro
+        de main.py tras pasar por varios sitios previos en la misma
+        sesion de navegador - nunca reproducido en pruebas aisladas.
+        Un cuelgue sin salida automatica es peor que una excepcion
+        limpia para un proceso batch desatendido, así que se revirtió
+        a este enfoque. Confirmado con evidencia real 2026-08-31.
         """
         boton_visualizar = page.locator("button:has-text('Visualizar Certificado')")
 
@@ -221,13 +233,8 @@ class ScraperAntecedentesPenales(BaseScraper):
 
         pestana_pdf.wait_for_load_state("domcontentloaded", timeout=15000)
 
-        # Espera activa a que la URL termine de estabilizarse en algo
-        # distinto a about:blank o vacío - confirmado que a veces la
-        # navegación real (redirección al PDF) no ha terminado cuando
-        # "domcontentloaded" se dispara, dejando pestana_pdf.url vacía
-        # o incompleta, causando "Invalid URL" en la petición HTTP.
         url_pdf = pestana_pdf.url
-        for _ in range(10):  # hasta 5 segundos de margen adicional
+        for _ in range(10):
             if url_pdf and url_pdf != "about:blank":
                 break
             page.wait_for_timeout(500)
@@ -246,7 +253,7 @@ class ScraperAntecedentesPenales(BaseScraper):
         if "pdf" not in url_pdf.lower() and "certificado" not in url_pdf.lower():
             print(f"    [aviso] URL de la pestaña no contiene 'pdf' explícito: {url_pdf}")
 
-        respuesta = page.context.request.get(url_pdf)
+        respuesta = page.context.request.get(url_pdf, timeout=20000)
         if not respuesta.ok:
             raise ScraperError(
                 f"[{self.nombre_sitio}] Falló la re-descarga directa del certificado "
@@ -255,7 +262,7 @@ class ScraperAntecedentesPenales(BaseScraper):
             )
 
         return respuesta.body()
-
+    
     def _cerrar_aviso_cookies_si_aparece(self, page: Page) -> None:
         """
         Cierra el aviso de cookies, si aparece. A partir del 2do

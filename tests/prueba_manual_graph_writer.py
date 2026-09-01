@@ -98,5 +98,9 @@ writer.escribir_estado_final(fila_excel=4, resultados={"sri_ruc": {"ok": True}})
 writer.escribir_estado_final(fila_excel=5, resultados={"scvs_companias": {"error": "Timeout", "requiere_revision_manual": True}})
 print("escribir_estado_final: OK - fila 4 debe decir 'Completado', fila 5 'Completado con pendientes'")
 
+writer.escribir_sitios_a_revisar(fila_excel=4, texto="SRI Deudas / Antecedentes Penales")
+writer.escribir_ruta_evidencia(fila_excel=4, ruta="C:\\ruta\\de\\prueba\\1001322518")
+print("escribir_sitios_a_revisar + escribir_ruta_evidencia: OK - revisa fila 4, columnas SITIOS A REVISAR y RUTA EVIDENCIA")
+
 writer.guardar()  # solo cierra la sesión, no escribe nada
 print("\nSesión cerrada correctamente.")

@@ -32,6 +32,21 @@ ID_BOTON_BUSCAR = "#btnBuscar"
 ID_CONTENEDOR_RESULTADOS = "#resultados"
 ID_CONTENEDOR_PAGINACION = "#paginacion"
 
+def _generar_variante_invertida(nombre_normalizado: str) -> str:
+    """
+    Genera la variante con las 2 mitades del nombre invertidas
+    (Apellidos Nombres <-> Nombres Apellidos) - el portal a veces
+    devuelve resultados en el orden contrario al formato estandar del
+    proyecto. Solo aplica de forma confiable si el nombre tiene
+    exactamente 4 palabras (2 apellidos + 2 nombres) - caso no
+    cubierto: personas con un solo apellido o un solo nombre.
+    """
+    palabras = nombre_normalizado.split()
+    if len(palabras) == 4:
+        apellidos = palabras[:2]
+        nombres = palabras[2:]
+        return " ".join(nombres + apellidos)
+    return nombre_normalizado
 
 class ScraperFiscalia(BaseScraper):
     nombre_sitio = "Fiscalía"
@@ -129,7 +144,18 @@ class ScraperFiscalia(BaseScraper):
                 sitio=f"sitio2_fiscalia_noticias_pagina{numero_pagina}", carpeta_sitio="fiscalia",
                 subcarpeta=cliente.subcarpeta_evidencia,
             )
-            denuncias_todas.extend(self._extraer_denuncias(page, cliente))
+
+            tarjetas_en_pagina = page.locator(f"{ID_CONTENEDOR_RESULTADOS} > div.card").count()
+            denuncias_filtradas = self._extraer_denuncias(page, cliente, criterio, texto_busqueda)
+
+            if criterio == "nombre":
+                print(f"    [{cliente.identificacion}] Página {numero_pagina}/{total_paginas} (nombre='{texto_busqueda}'): "
+                      f"{tarjetas_en_pagina} tarjetas totales -> {len(denuncias_filtradas)} tras filtro exacto")
+
+            denuncias_todas.extend(denuncias_filtradas)
+        if criterio == "nombre":
+            print(f"    [{cliente.identificacion}] TOTAL búsqueda por nombre: {total_paginas} página(s), "
+                  f"{len(denuncias_todas)} denuncias tras filtro exacto (de todas las páginas combinadas)")
 
         return denuncias_todas
 
@@ -173,10 +199,28 @@ class ScraperFiscalia(BaseScraper):
         numeros = [int(t.strip()) for t in textos if t.strip().isdigit()]
         return max(numeros) if numeros else 1
 
-    def _extraer_denuncias(self, page: Page, cliente: Cliente) -> list[Denuncia]:
+    def _extraer_denuncias(self, page: Page, cliente: Cliente, criterio: str, texto_busqueda: str) -> list[Denuncia]:
+        """
+        criterio/texto_busqueda: la busqueda que produjo estos
+        resultados. Cuando criterio=="nombre", el portal puede devolver
+        denuncias de personas con apellido similar pero que NO son la
+        persona buscada (ej. buscar "TORRES GORDILLO DIEGO PATRICIO"
+        trae tambien a "GORDILLO GORDILLO CELSO AMADEO" - comparten
+        apellido, son personas distintas). Se descarta cualquier
+        tarjeta donde NINGUNA fila de la tabla de involucrados coincida
+        EXACTO (nombre normalizado) con el nombre buscado - mismo
+        patron ya validado en el proyecto hermano (ACW-InformesLegales).
+        Las busquedas por cedula/ruc no tienen este problema (cedula es
+        exacta por naturaleza), no se filtran.
+        """
         tarjetas = page.locator(f"{ID_CONTENEDOR_RESULTADOS} > div.card").all()
 
+        nombre_buscado_normalizado = normalizar_texto_busqueda(texto_busqueda).strip().upper() if criterio == "nombre" else None
+
         denuncias = []
+        total_tarjetas = len(tarjetas)
+        descartadas_por_nombre = 0
+
         for tarjeta in tarjetas:
             header = tarjeta.locator(".card-header").first.inner_text()
             numero = header.replace("NOTICIA DEL DELITO Nro.", "").strip()
@@ -193,6 +237,7 @@ class ScraperFiscalia(BaseScraper):
             estado_rol_cliente = ""
             nombres_sospechosos = []
             roles_sospechoso = ("SOSPECHOSO", "SOSPECHOSO NO RECONOCIDO")
+            coincide_nombre_exacto = False
 
             for fila in filas_sujetos:
                 celdas = fila.locator("td").all_inner_texts()
@@ -205,6 +250,17 @@ class ScraperFiscalia(BaseScraper):
                 if estado_fila.strip().upper() in roles_sospechoso:
                     nombres_sospechosos.append(nombre_fila)
 
+                if nombre_buscado_normalizado is not None:
+                    nombre_fila_normalizado = normalizar_texto_busqueda(nombre_fila).strip().upper()
+                    variante_invertida = _generar_variante_invertida(nombre_buscado_normalizado)
+                    if nombre_fila_normalizado == nombre_buscado_normalizado or nombre_fila_normalizado == variante_invertida:
+                        coincide_nombre_exacto = True
+                        estado_rol_cliente = estado_fila
+
+            if nombre_buscado_normalizado is not None and not coincide_nombre_exacto:
+                descartadas_por_nombre += 1
+                continue  # "nombre relacionado" (mismo apellido, persona distinta) - no es el cliente real
+
             nombre_sospechoso = "; ".join(nombres_sospechosos)
 
             denuncias.append(Denuncia(
@@ -216,6 +272,9 @@ class ScraperFiscalia(BaseScraper):
                 nombre_sospechoso=nombre_sospechoso,
                 unidad_fiscalia=unidad,
             ))
+
+        if nombre_buscado_normalizado is not None:
+            print(f"    [Fiscalía-nombre] {total_tarjetas} tarjetas encontradas, {descartadas_por_nombre} descartadas por no coincidir exacto con el nombre buscado, {len(denuncias)} conservadas")
 
         return denuncias
 
