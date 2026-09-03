@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from dataclasses import dataclass, field
+from datetime import datetime
 
 class TipoPersona(str, Enum):
     NATURAL = "natural"
@@ -126,6 +126,37 @@ class CompaniaSCVS:
     registrado: bool = True
     mensaje: str = ""
     ruta_pdf: str = ""
+
+@dataclass
+class ParticipacionSocietaria:
+    ruc_empresa: str = ""
+    nombre_empresa: str = ""
+    actividad_economica: str = ""  # obtenido via consulta cruzada a SCVS Companias
+
+@dataclass
+class LogEntry:
+    fecha_hora: "datetime"
+    cliente_identificacion: str
+    cliente_nombre: str
+    usuario_proceso: str
+    ip_origen: str
+    resultado: ResultadoConsulta
+    sitio_web: str
+    ruta_evidencia: str = ""
+    detalle: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "fecha_hora": self.fecha_hora.isoformat(),
+            "cliente_identificacion": self.cliente_identificacion,
+            "cliente_nombre": self.cliente_nombre,
+            "usuario_proceso": self.usuario_proceso,
+            "ip_origen": self.ip_origen,
+            "resultado": self.resultado.value,
+            "sitio_web": self.sitio_web,
+            "ruta_evidencia": self.ruta_evidencia,
+            "detalle": self.detalle,
+        }
 
 @dataclass
 class DeudaMunicipal:

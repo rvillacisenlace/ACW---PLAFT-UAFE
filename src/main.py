@@ -27,6 +27,7 @@ from src.scrapers.sitio_sri_estado_tributario import ScraperSRIEstadoTributario
 from src.scrapers.sitio_salud import ScraperSalud
 from src.scrapers.sitio_iess import ScraperIESS
 from src.scrapers.sitio_scvs_companias import ScraperSCVSCompanias
+from src.scrapers.sitio_scvs_personas import ScraperSCVSPersonas
 from src.scrapers.sitio_contraloria import ScraperContraloria
 from src.scrapers.sitio_municipio_quito import ScraperMunicipioQuito
 from src.scrapers.sitio_municipio_cuenca import ScraperMunicipioCuenca
@@ -38,6 +39,8 @@ from src.scrapers.sitio_sercop_certificados import ScraperSERCOPCertificados
 from src.scrapers.cadena_representante import resolver_representante_legal
 from src.core.excel_writer import LocalExcelWriter
 from src.core.contador_diario import limite_alcanzado, incrementar_contador_hoy, obtener_contador_hoy
+from src.core.excel_writer import GraphAPIWriter
+from src.core.graph_uploader import GraphUploader
 from datetime import datetime
 import os
 
@@ -47,7 +50,15 @@ RUTA_EXCEL_LOCAL = "templates/Matriz Revisión Clientes.xlsx"
 # hardcodeado (mismo criterio que el proyecto hermano): si falta algun
 # parametro, el programa se detiene con un error claro en vez de seguir
 # corriendo en silencio contra una URL vieja/desactualizada.
-_writer_parametros = LocalExcelWriter(RUTA_EXCEL_LOCAL)
+import os
+_writer_parametros = GraphAPIWriter(
+    cuenta_onedrive=os.getenv("CUENTA_ONEDRIVE", "unidadq@enlace.ec"),
+    drive_id=os.getenv("GRAPH_DRIVE_ID"),
+    item_id=os.getenv("GRAPH_EXCEL_ITEM_ID"),
+    tenant_id=os.getenv("AZURE_TENANT_ID"),
+    client_id=os.getenv("AZURE_CLIENT_ID"),
+    client_secret=os.getenv("AZURE_CLIENT_SECRET"),
+)
 _parametros = _writer_parametros.leer_parametrizacion()
 
 _MAPEO_URLS = {
@@ -61,6 +72,7 @@ _MAPEO_URLS = {
     "salud": "URL_SALUD",
     "iess": "URL_IESS",
     "scvs_companias": "URL_SCVS_COMPANIAS",
+        "scvs_personas": "URL_SCVS_PERSONA",
     "contraloria": "URL_CONTRALORIA",
     "municipio_quito": "URL_MUNICIPIO_QUITO",
     "municipio_cuenca": "URL_MUNICIPIO_CUENCA",
@@ -163,11 +175,11 @@ def procesar_cliente(page, cliente: Cliente) -> dict:
     # --- 5. IESS (persona: cliente o representante) ---
     _ejecutar("iess", lambda: ScraperIESS(context=page.context, url_base=URLS["iess"]).buscar_cliente(page, cliente_para_persona))
 
-    # --- 6. SCVS - Compañías (activo). Personas se agrega aquí cuando esté listo ---
+    # --- 6. SCVS - Compañías (solo Jurídica) y Personas (persona: cliente o representante) ---
     if cliente.tipo_persona == TipoPersona.JURIDICA:
         _ejecutar("scvs_companias", lambda: ScraperSCVSCompanias(context=page.context, url_base=URLS["scvs_companias"]).buscar_cliente(page, cliente))
-    # TODO: agregar scvs_personas aquí cuando el scraper esté listo
-
+    _ejecutar("scvs_personas", lambda: ScraperSCVSPersonas(context=page.context, url_base=URLS["scvs_personas"], url_base_sri=URLS["sri_ruc"]).buscar_cliente(page, cliente_para_persona))
+    
     # --- 7. Antecedentes Penales (persona: cliente o representante) ---
     _ejecutar("antecedentes_penales", lambda: ScraperAntecedentesPenales(context=page.context, url_base=URLS["antecedentes_penales"]).buscar_cliente(page, cliente_para_persona))
 
@@ -306,13 +318,15 @@ def escribir_resultados_excel(writer: LocalExcelWriter, cliente: Cliente, result
 
 
 def main():
-    writer = LocalExcelWriter(RUTA_EXCEL_LOCAL)
+    writer = _writer_parametros  # reutiliza la sesión de Graph ya abierta arriba
     clientes = writer.leer_clientes_pendientes()
     print(f"Se encontraron {len(clientes)} clientes pendientes en el Excel.\n")
 
     if not clientes:
         print("No hay clientes pendientes.")
         return
+
+    uploader = GraphUploader(cuenta_onedrive=os.getenv("CUENTA_ONEDRIVE", "unidadq@enlace.ec"), writer=writer)
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=False, slow_mo=200, channel="chrome")
@@ -338,8 +352,13 @@ def main():
                 escribir_resultados_excel(writer, cliente, resultados)
                 writer.guardar()
                 print(f"[{cliente.identificacion}] Excel actualizado y guardado.")
+
+                ahora = datetime.now()
+                carpeta_cliente = os.path.join("data/staging/DebidaDiligencia", str(ahora.year), f"{ahora.month:02d}", cliente.identificacion)
+                subidos = uploader.subir_carpeta_cliente(carpeta_cliente, cliente.identificacion, str(ahora.year), f"{ahora.month:02d}")
+                print(f"[{cliente.identificacion}] {len(subidos)} archivo(s) de evidencia subidos a OneDrive.")
             except Exception as e:
-                print(f"[{cliente.identificacion}] FALLÓ al escribir en Excel: {type(e).__name__}: {e}")
+                print(f"[{cliente.identificacion}] FALLÓ al escribir en Excel o subir evidencia: {type(e).__name__}: {e}")
 
         print(f"\n{'='*70}")
         print("RESUMEN FINAL")
@@ -350,6 +369,7 @@ def main():
                 estado = "REVISIÓN MANUAL" if _fallo(resultado) else "OK"
                 print(f"  {sitio}: {estado}")
 
+        writer.guardar()  # cierra la sesión de Graph API
         input("\nPresiona ENTER para cerrar...")
         browser.close()
 

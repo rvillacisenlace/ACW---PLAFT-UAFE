@@ -35,6 +35,7 @@ class ExcelWriter(ABC):
     def guardar(self) -> None:
         raise NotImplementedError
 
+
 class LocalExcelWriter(ExcelWriter):
     """
     Apunta a la hoja real 'Revision' del Excel de trabajo. El encabezado
@@ -49,10 +50,6 @@ class LocalExcelWriter(ExcelWriter):
     ESTILO_ALINEACION = Alignment(horizontal="center", vertical="center", wrap_text=True)
     ESTILO_RELLENO = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
 
-    # Columnas del bloque SRI-cliente (14-21) - hardcodeadas por indice
-    # porque sus nombres de columna se repiten identicos en el bloque
-    # de representante legal (22-29) y _col() por nombre resolveria mal
-    # (el diccionario de mapa_columnas no distingue duplicados).
     COL_SRI_RAZON_SOCIAL = 14
     COL_SRI_ESTADO_CONTRIBUYENTE = 15
     COL_SRI_FECHA_INICIO = 16
@@ -62,10 +59,6 @@ class LocalExcelWriter(ExcelWriter):
     COL_SRI_TRANSACCIONES_INEXISTENTES = 20
     COL_SRI_ACTIVIDAD_ECONOMICA = 21
 
-    # Bloque SRI-representante-legal (22-29) - mismo motivo de indices
-    # directos que el bloque anterior. OJO: el orden de campos aqui es
-    # distinto al bloque del cliente (actividad economica va antes que
-    # fantasma/transacciones, no al final).
     COL_SRI_RL_RAZON_SOCIAL = 22
     COL_SRI_RL_ESTADO_CONTRIBUYENTE = 23
     COL_SRI_RL_FECHA_INICIO = 24
@@ -75,34 +68,25 @@ class LocalExcelWriter(ExcelWriter):
     COL_SRI_RL_CONTRIBUYENTE_FANTASMA = 28
     COL_SRI_RL_TRANSACCIONES_INEXISTENTES = 29
 
-    # Bloque Contraloria (EB-EG). "Cargo" se repite 5 veces en la hoja
-    # (columnas 50,59,68,77,135) - se usa indice directo, no _col().
-    # ED "Categoria" (134) se deja SIN TOCAR - es de llenado manual.
     COL_CONTRALORIA_DECLARACIONES = 132
     COL_CONTRALORIA_VIGENCIA = 133
     COL_CONTRALORIA_CARGO = 135
     COL_CONTRALORIA_TIEMPO = 136
     COL_CONTRALORIA_ULTIMO_ANIO = 137
 
-    # Bloque Sentenciados (EM-EY). Los 4 nombres de columna (No., No.
-    # Proceso, Fecha de Resolucion, Infraccion) se repiten 3 veces (uno
-    # por cada slot de hasta 3 sentencias) - indices directos.
     COL_SENTENCIADOS_TOTAL = 143
     COL_SENTENCIADOS_SLOTS = [
-        (144, 145, 146, 147),  # No., No. Proceso, Fecha, Infraccion - slot 1
-        (148, 149, 150, 151),  # slot 2
-        (152, 153, 154, 155),  # slot 3
+        (144, 145, 146, 147),
+        (148, 149, 150, 151),
+        (152, 153, 154, 155),
     ]
 
-    # Bloque Funcion Judicial / CNJ (EZ-FP). "No.", "Fecha de ingreso",
-    # "No. proceso", "Accion /Infraccion", "Observaciones" se repiten 3
-    # veces (slots) - indices directos.
     COL_CNJ_TOTAL = 156
     COL_CNJ_TEMATICA = 157
     COL_CNJ_SLOTS = [
-        (158, 159, 160, 161, 162),  # No., Fecha ingreso, No. proceso, Accion/Infraccion, Observaciones - slot 1
-        (163, 164, 165, 166, 167),  # slot 2
-        (168, 169, 170, 171, 172),  # slot 3
+        (158, 159, 160, 161, 162),
+        (163, 164, 165, 166, 167),
+        (168, 169, 170, 171, 172),
     ]
 
     def __init__(self, ruta_excel: str, nombre_hoja: str = "Revision"):
@@ -112,16 +96,6 @@ class LocalExcelWriter(ExcelWriter):
         self.hoja = self.wb[nombre_hoja]
         self.mapa_columnas = self._construir_mapa_columnas(self.hoja)
 
-        # Mitigacion de un bug conocido de openpyxl: wb.save() CIERRA el
-        # stream interno de cada imagen embebida al terminar de guardar.
-        # Un segundo guardado en el mismo proceso falla con "I/O
-        # operation on closed file" porque no hay como releer un stream
-        # ya cerrado. Se capturan los bytes crudos UNA SOLA VEZ aqui,
-        # mientras los streams siguen frescos tras la carga, y cada
-        # guardado posterior arma un BytesIO nuevo desde esa copia en
-        # memoria - nunca depende de releer un stream ya usado.
-        # Confirmado con evidencia real: 5/5 guardados seguidos en el
-        # mismo proceso, antes fallaba siempre en el 2do.
         import io
         self._imagenes_bytes_originales = []
         for hoja_wb in self.wb.worksheets:
@@ -130,13 +104,6 @@ class LocalExcelWriter(ExcelWriter):
                 self._imagenes_bytes_originales.append((img, img.ref.read()))
 
     def _construir_mapa_columnas(self, hoja) -> dict:
-        """
-        Construye {nombre_columna_normalizado: indice_1based} leyendo las
-        3 filas de encabezado. Si una columna tiene texto en mas de una
-        fila (raro, pero por si acaso), se usa la fila mas profunda (3 >
-        2 > 1) porque ahi vive el nombre de campo especifico, no el del
-        grupo/subgrupo.
-        """
         mapa = {}
         for col in range(1, hoja.max_column + 1):
             valor = (
@@ -161,13 +128,6 @@ class LocalExcelWriter(ExcelWriter):
         celda.fill = self.ESTILO_RELLENO
 
     def leer_clientes_pendientes(self, nombre_hoja: str = None) -> list:
-        """
-        Lee clientes pendientes de la hoja 'Revision' real (openpyxl
-        directo, archivo local). No existe columna 'Tipo' explicita -
-        se infiere Natural/Juridica segun si esta llena 'Apellidos Y
-        Nombres' o 'Razon Social'. Todo lo que NO sea 'Completado' en
-        ESTADO se considera pendiente.
-        """
         from src.core.models import Cliente, TipoPersona
 
         col_id = self._col("Ruc / CI")
@@ -212,11 +172,6 @@ class LocalExcelWriter(ExcelWriter):
         self._escribir_valor_con_estilo(fila_excel, col, "SI" if posee_antecedentes else "NO")
 
     def escribir_sri_ruc(self, fila_excel: int, datos: dict, datos_representante_legal: dict = None) -> None:
-        """
-        Escribe el resultado de consultar_ruc() del SRI para el cliente,
-        y opcionalmente para su representante legal (bloque 22-29). Si
-        no hay representante legal resuelto, ese bloque se llena con "-".
-        """
         self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RAZON_SOCIAL, datos.get("razon_social", ""))
         self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_ESTADO_CONTRIBUYENTE, datos.get("estado_contribuyente", ""))
         self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_FECHA_INICIO, datos.get("fecha_inicio_actividades", ""))
@@ -267,10 +222,6 @@ class LocalExcelWriter(ExcelWriter):
         self._escribir_valor_con_estilo(fila_excel, col, texto)
 
     def escribir_municipios(self, fila_excel: int, resultados: dict) -> None:
-        """
-        Consolida los 5 municipios en 2 columnas (AF, AG).
-        resultados: {"Quito": DeudaMunicipal, "Cuenca": DeudaMunicipal, ...}
-        """
         municipios_con_deuda = []
         total_deuda = 0.0
         algun_registrado = False
@@ -391,14 +342,10 @@ class LocalExcelWriter(ExcelWriter):
         self._escribir_valor_con_estilo(fila_excel, col, estado)
 
     def escribir_sitios_a_revisar(self, fila_excel: int, texto: str) -> None:
-        """Columna SITIOS A REVISAR (GO) - detalle legible de que sitios
-        requieren revision manual cuando ESTADO = 'Completado con pendientes'."""
         col = self._col("SITIOS A REVISAR")
         self._escribir_valor_con_estilo(fila_excel, col, texto)
 
     def escribir_ruta_evidencia(self, fila_excel: int, ruta: str) -> None:
-        """Columna RUTA EVIDENCIA - ruta a la carpeta raiz de evidencia
-        de este cliente, para que el usuario la encuentre facil."""
         col = self._col("RUTA EVIDENCIA")
         self._escribir_valor_con_estilo(fila_excel, col, ruta)
 
@@ -469,14 +416,43 @@ class GraphAPIWriter(ExcelWriter):
         self._refrescar_token()
         return {**self.headers, "workbook-session-id": self.session_id}
 
+    def _patch_con_reintento_sesion(self, url: str, json_body: dict, intentos_maximos: int = 3):
+        """
+        PATCH con recuperación automática ante 2 tipos de fallo
+        transitorio, confirmados ambos con evidencia real:
+        1. Sesión expirada (400 + "InvalidSession") - se recrea la
+           sesión y se reintenta.
+        2. Servidor de Graph sobrecargado (502/503/504) - se espera un
+           poco (backoff simple) y se reintenta con la misma sesión,
+           sin recrearla (no es un problema de  sesión, es del servidor).
+        Sin esto, un solo error transitorio de Graph tumbaba TODA la
+        escritura de un cliente completo (Excel + evidencia), perdiendo
+        el trabajo de scraping ya hecho para ese cliente.
+        """
+        import time
+
+        for intento in range(1, intentos_maximos + 1):
+            resp = requests.patch(url, headers=self._headers_con_sesion(), json=json_body)
+
+            if resp.ok:
+                return resp
+
+            if resp.status_code == 400 and "InvalidSession" in resp.text:
+                print(f"    [Graph API] Sesión expirada (intento {intento}/{intentos_maximos}) - recreando sesión...")
+                self.session_id = self._crear_sesion()
+                continue
+
+            if resp.status_code in (502, 503, 504):
+                espera = intento * 3  # backoff simple: 3s, 6s, 9s
+                print(f"    [Graph API] Error {resp.status_code} del servidor (intento {intento}/{intentos_maximos}) - esperando {espera}s y reintentando...")
+                time.sleep(espera)
+                continue
+
+            return resp  # error distinto - no reintentable, se devuelve tal cual
+
+        return resp  # se agotaron los intentos - se devuelve el ultimo intento, raise_for_status() lo reportará
+
     def _leer_encabezados(self) -> dict:
-        """
-        Lee las primeras 3 filas de la hoja para armar el mapa de
-        columnas - el encabezado real ocupa 3 filas (grupo/subgrupo/
-        campo), no solo la fila 1. Se usa la fila mas profunda (3 > 2 >
-        1) con texto para cada columna, igual criterio que
-        LocalExcelWriter._construir_mapa_columnas().
-        """
         url = f"{self.base_url}/worksheets/{self.nombre_hoja}/range(address='1:3')"
         resp = requests.get(url, headers=self._headers_con_sesion())
         resp.raise_for_status()
@@ -544,38 +520,28 @@ class GraphAPIWriter(ExcelWriter):
     def _escribir_valor_con_estilo(self, fila_excel: int, col_idx_0based: int, valor) -> None:
         """
         Escribe el valor de una celda Y le aplica el estilo completo
-        (alineacion, fuente, relleno) en cada llamada - por decision
-        explicita del usuario, cada celda se formatea individualmente.
-        Valor + alineacion van en UNA sola peticion (mismo endpoint del
-        rango) en vez de dos separadas - reduce de 4 a 3 peticiones por
-        celda.
+        (alineacion, fuente, relleno) en cada llamada. Cada peticion
+        pasa por _patch_con_reintento_sesion, que recupera sola la
+        sesion si expiro a mitad de una corrida larga (confirmado con
+        evidencia real: "InvalidSession" tras ~15 min de scraping antes
+        de llegar a escribir el Excel).
         """
         letra_columna = self._indice_a_letra(col_idx_0based)
         celda = f"{letra_columna}{fila_excel}"
-        texto = str(valor).upper() if valor is not None else valor
+        texto = str(valor).upper() if valor is not None else ""
         url_rango = f"{self.base_url}/worksheets/{self.nombre_hoja}/range(address='{celda}')"
 
-        requests.patch(
-            url_rango, headers=self._headers_con_sesion(),
-            json={
-                "values": [[texto]],
-                "horizontalAlignment": "Center", "verticalAlignment": "Center", "wrapText": True,
-            },
-        ).raise_for_status()
+        resp = self._patch_con_reintento_sesion(url_rango, {
+            "values": [[texto]],
+            "horizontalAlignment": "Center", "verticalAlignment": "Center", "wrapText": True,
+        })
+        resp.raise_for_status()
 
-        requests.patch(
-            f"{url_rango}/format/font", headers=self._headers_con_sesion(),
-            json={"name": "Book Antiqua", "size": 11},
-        ).raise_for_status()
-
-        requests.patch(
-            f"{url_rango}/format/fill", headers=self._headers_con_sesion(),
-            json={"color": "#D9D9D9"},
-        ).raise_for_status()
+        self._patch_con_reintento_sesion(f"{url_rango}/format/font", {"name": "Book Antiqua", "size": 11}).raise_for_status()
+        self._patch_con_reintento_sesion(f"{url_rango}/format/fill", {"color": "#D9D9D9"}).raise_for_status()
 
     @staticmethod
     def _indice_a_letra(indice_0based: int) -> str:
-        """Convierte un indice de columna 0-based a letra de Excel (0->A, 25->Z, 26->AA, ...)."""
         indice = indice_0based
         letra = ""
         while True:
@@ -602,10 +568,6 @@ class GraphAPIWriter(ExcelWriter):
         col = self._col("RUTA EVIDENCIA")
         self._escribir_valor_con_estilo(fila_excel, col, ruta)
 
-    # Constantes de columna 0-based, EQUIVALENTES a las de LocalExcelWriter
-    # (que son 1-based, convencion de openpyxl) menos 1. Ver comentarios
-    # originales en LocalExcelWriter para el porque de cada bloque
-    # hardcodeado (nombres de columna repetidos en la hoja).
     COL_SRI_RAZON_SOCIAL = 13
     COL_SRI_ESTADO_CONTRIBUYENTE = 14
     COL_SRI_FECHA_INICIO = 15
@@ -874,17 +836,6 @@ class GraphAPIWriter(ExcelWriter):
         self._escribir_filas_batch("ProcesosOmitidos", fila_inicial, filas_valores)
 
     def leer_clientes_pendientes(self, nombre_hoja: str = None) -> list:
-        """
-        Lee los clientes pendientes directamente del Excel real en
-        OneDrive. Usa self._mapa_columnas (ya construido en __init__
-        con _leer_encabezados(), que maneja el encabezado real de 3
-        filas) via self._col(), no releyendo la fila 1 aqui. Los datos
-        empiezan en la fila 4 (indices 3+ del array 'valores', que es
-        0-based). No existe columna 'Tipo' explicita - se infiere
-        Natural/Juridica segun si esta llena 'Apellidos Y Nombres' o
-        'Razon Social'. Todo lo que NO sea 'Completado' en ESTADO se
-        considera pendiente.
-        """
         from src.core.models import Cliente, TipoPersona
 
         hoja = nombre_hoja or self.nombre_hoja
