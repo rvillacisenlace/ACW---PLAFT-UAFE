@@ -112,8 +112,15 @@ class ScraperSRI(BaseScraper):
         }
 
         try:
+            # :text-is() (coincidencia EXACTA) en vez de :has-text()
+            # (substring) - confirmado con evidencia real: para empresas
+            # Jurídicas, el bloque "Representante legal" agrega un div
+            # "Nombre/Razón Social:" que también contenía "Razón Social"
+            # como substring, causando un choque de "strict mode
+            # violation" en Playwright que el try/except se tragaba en
+            # silencio, dejando razon_social vacío.
             datos["razon_social"] = page.locator(
-                "div.sri-bold:has-text('Razón social')"
+                "div.sri-bold:text-is('Razón social')"
             ).locator("xpath=following::span[contains(@class,'titulo-consultas-1')][1]").inner_text().strip()
         except Exception:
             pass
@@ -131,6 +138,21 @@ class ScraperSRI(BaseScraper):
             datos["actividad_economica"] = page.locator(
                 "th:has-text('Actividad económica principal')"
             ).locator("xpath=following::td[@class='border-top-tabla-datos'][1]").inner_text().strip()
+        except Exception:
+            pass
+
+        # Solicitado por Cumplimiento (2026-09-03): si el contribuyente
+        # esta SUSPENDIDO, el motivo de la suspension reemplaza el
+        # contenido normal de "Actividad Economica" - este bloque solo
+        # se renderiza quando el estado es suspendido (confirmado con
+        # evidencia real), por eso el try/except silencioso es seguro:
+        # si no existe, simplemente no hay nada que sobreescribir.
+        try:
+            motivo_suspension = page.locator(
+                "div.sri-bold:has-text('Motivo suspensión')"
+            ).locator("xpath=following::span[1]").inner_text().strip()
+            if motivo_suspension:
+                datos["actividad_economica"] = motivo_suspension
         except Exception:
             pass
 

@@ -34,7 +34,18 @@ class ScraperContraloria(BaseScraper):
                 f"legal (funcionalidad de cadena de representantes pendiente).",
                 resultado=ResultadoConsulta.SIN_DATOS,
             )
+        return self.ejecutar_con_reintentos(self._intentar_buscar_una_vez, page, cliente)
 
+    def _intentar_buscar_una_vez(self, page: Page, cliente: Cliente) -> list[dict]:
+        """
+        Un intento completo de búsqueda, desde cero (goto incluido). Si
+        el sitio se queda atascado en "Procesando..." (confirmado por el
+        usuario: comportamiento inestable conocido del sitio, no un bug
+        de código - se resuelve manualmente recargando y consultando de
+        nuevo), esto lanza una excepción y ejecutar_con_reintentos()
+        recarga la página y repite todo el intento desde cero, igual que
+        el flujo manual del usuario.
+        """
         page.goto(self.url_base)
         self.delay_humano(1.5, 2.5)
 
@@ -55,7 +66,13 @@ class ScraperContraloria(BaseScraper):
         self._resolver_captcha_visual(page)
 
         page.click("#btnBuscar_in")
-        self.delay_humano(2.0, 3.5)
+
+        # Espera al indicador "Procesando..." de DataTables. Si no
+        # desaparece en 15s, se asume el atasco conocido del sitio y se
+        # relanza como error (NO se ignora en silencio) para que
+        # ejecutar_con_reintentos() recargue y reintente todo el flujo.
+        page.locator("#tblBusquedaResultados_processing").wait_for(state="hidden", timeout=15000)
+        self.delay_humano(1.0, 1.5)
 
         return self._extraer_resultados(page, cliente)
 

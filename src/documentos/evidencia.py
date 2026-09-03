@@ -2,7 +2,7 @@ import hashlib
 import os
 from datetime import datetime
 from playwright.sync_api import Page
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 
 def capturar_evidencia(
@@ -48,8 +48,20 @@ def capturar_evidencia(
     img = Image.open(ruta_archivo)
     draw = ImageDraw.Draw(img)
     texto = f"Evidencia: {sitio} | Cliente: {identificacion_cliente} | {timestamp_legible}"
-    draw.rectangle([(5, 5), (5 + len(texto) * 7, 25)], fill=(255, 255, 255))
-    draw.text((10, 8), texto, fill=(200, 0, 0))
+
+    # Tamano solicitado por Cumplimiento (2026-09-03): +2pt sobre el
+    # tamano base legible de 14pt = 16pt final.
+    TAMANO_FUENTE_MARCA_AGUA = 16
+    try:
+        fuente = ImageFont.truetype("arial.ttf", TAMANO_FUENTE_MARCA_AGUA)
+    except Exception:
+        fuente = ImageFont.load_default()  # respaldo si arial.ttf no esta en el sistema
+
+    caja_texto = draw.textbbox((0, 0), texto, font=fuente)
+    ancho_texto = caja_texto[2] - caja_texto[0]
+    alto_texto = caja_texto[3] - caja_texto[1]
+    draw.rectangle([(5, 5), (15 + ancho_texto, 20 + alto_texto)], fill=(255, 255, 255))
+    draw.text((10, 8), texto, fill=(200, 0, 0), font=fuente)
     img.save(ruta_archivo)
 
     sha256 = hashlib.sha256(open(ruta_archivo, "rb").read()).hexdigest()

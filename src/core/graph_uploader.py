@@ -60,18 +60,27 @@ class GraphUploader:
         if not os.path.isdir(carpeta_local_cliente):
             return []
 
-        subidos = []
+        # Se recolectan todos los archivos primero para poder mostrar
+        # "X/Y" en el progreso, en vez de un conteo que crece sin saber
+        # el total esperado.
+        archivos_a_subir = []
         for raiz, _, archivos in os.walk(carpeta_local_cliente):
             for nombre_archivo in archivos:
                 ruta_local = os.path.join(raiz, nombre_archivo)
                 ruta_relativa = os.path.relpath(ruta_local, carpeta_local_cliente).replace(os.sep, "/")
-                ruta_onedrive = "/".join([
-                    self.carpeta_base, "DebidaDiligencia", año, mes, identificacion_cliente, ruta_relativa,
-                ])
-                try:
-                    self._subir_un_archivo(ruta_local, ruta_onedrive)
-                    subidos.append(nombre_archivo)
-                except Exception as e:
-                    print(f"    [OneDrive] Falló subida de {ruta_relativa}: {type(e).__name__}: {e}")
+                archivos_a_subir.append((ruta_local, ruta_relativa))
+
+        total = len(archivos_a_subir)
+        subidos = []
+        for i, (ruta_local, ruta_relativa) in enumerate(archivos_a_subir, start=1):
+            ruta_onedrive = "/".join([
+                self.carpeta_base, "DebidaDiligencia", año, mes, identificacion_cliente, ruta_relativa,
+            ])
+            try:
+                self._subir_un_archivo(ruta_local, ruta_onedrive)
+                subidos.append(os.path.basename(ruta_local))
+                print(f"    [OneDrive] ({i}/{total}) Subido: {ruta_relativa}")
+            except Exception as e:
+                print(f"    [OneDrive] ({i}/{total}) Falló: {ruta_relativa} - {type(e).__name__}: {e}")
 
         return subidos

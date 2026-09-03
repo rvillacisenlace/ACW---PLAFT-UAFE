@@ -1,24 +1,33 @@
 """
 Scraper del Sitio 3, Flujo 3.1 (SCVS - Consulta de Personas).
 
-Módulo distinto al de SCVS Compañías: usa ZK Framework (clases "z-*"),
-NO PrimeFaces/JSF - los IDs de cada elemento son generados dinámicamente
-por ZK y cambian en cada sesión (ej. "fGBPv-real" una vez, "zLHPv-real"
-otra) - a diferencia de Compañías (JSF, IDs estables), aquí TODOS los
-selectores deben basarse en clase CSS o texto visible, nunca en el ID
-completo del elemento.
+Módulo ZK Framework - IDs dinámicos por sesión, todos los selectores se
+basan en clase CSS o texto visible, nunca en el ID completo.
 
-Alcance confirmado con el usuario (2026-09-01): solo la sección
-"Accionista Actual en:" (participación activa), máximo 3 empresas
-relacionadas. Para la Actividad Económica de cada una (que esta tabla
-NO muestra), se hace una consulta cruzada a ScraperSCVSCompanias por
-RUC - mismo criterio que pide la especificación original del proyecto
-(Flujo 3.1: "Registrar las compañías donde tiene participación activa
--máximo 3- y capturar la Actividad Económica de dichas empresas").
-
-SIN PROBAR TODAVÍA CONTRA EL SITIO REAL - selectores diseñados a partir
-de HTML real proporcionado, pero nunca ejecutados en vivo.
+Alcance REAL confirmado con el usuario (2026-09-03) contra el Excel de
+referencia (caso Corredor Camargo Silverio, 1706794003001):
+- Se extraen 2 secciones: "Administración Actual en:" (Presidente/RL) y
+  "Accionista Actual en:". Los totales de cada una van en columnas
+  separadas (Z, AA), SIN deduplicar entre si.
+- Las empresas se FUSIONAN por RUC: si una empresa aparece en ambas
+  secciones, su Cargo combina ambos roles ("Accionista / PRESIDENTE").
+  Si aparece solo en una, el Cargo refleja solo esa.
+- La lista fusionada se ordena por Capital Invertido DESCENDENTE
+  (confirmado por el usuario como la regla real), y se toman las
+  primeras 4 (hay 4 slots en el Excel real, no 3 como se asumio
+  inicialmente).
+- Empresas que solo aparecen en "Administración Actual" (sin ser
+  tambien accionistas) no tienen Capital Invertido - se tratan como 0
+  para efectos de orden (quedan al final), y aparecen en el Cargo con
+  el texto de administracion.
+- "Patrimonio (Último año) BG-3" queda PENDIENTE - requiere un modulo
+  de SCVS que todavia no se ha explorado (sin HTML de referencia aun).
+  Todas las participaciones se devuelven con ese campo en "-".
+- La Actividad Económica (Observaciones) y Fecha de Constitución se
+  obtienen via consulta cruzada a SRI, en pestaña separada.
 """
+import time
+
 from playwright.sync_api import Page
 
 from src.scrapers.base_scraper import BaseScraper, ScraperError
@@ -29,6 +38,9 @@ ID_COMBOBOX_INPUT = "input.z-combobox-inp"
 ID_PANEL_SUGERENCIAS = ".z-combobox-pp .z-comboitem"
 TEXTO_RADIO_IDENTIFICACION = "Identificación"
 TEXTO_ENCABEZADO_ACCIONISTA_ACTUAL = "Accionista Actual en:"
+TEXTO_ENCABEZADO_ADMINISTRACION_ACTUAL = "Administración Actual en:"
+TEXTO_SIN_COINCIDENCIA = "No existe ninguna coincidencia con el parámetro ingresado"
+MAXIMO_SLOTS = 4
 
 
 class ScraperSCVSPersonas(BaseScraper):
@@ -36,20 +48,21 @@ class ScraperSCVSPersonas(BaseScraper):
 
     def __init__(self, context, url_base: str, url_base_sri: str):
         super().__init__(context, url_base)
-        # Necesario para la consulta cruzada de Actividad Economica por
-        # cada empresa relacionada encontrada (via SRI, no SCVS Companias).
         self.scraper_sri = ScraperSRI(context=context, url_base=url_base_sri)
 
     def tiene_captcha(self, page: Page) -> bool:
         return False  # confirmado por el usuario: este modulo no tiene captcha
 
-    def buscar_cliente(self, page: Page, cliente: Cliente) -> list[ParticipacionSocietaria]:
+    def buscar_cliente(self, page: Page, cliente: Cliente) -> dict:
+        """
+        Devuelve un dict con:
+        - "total_presidente_rl": int (columna Z)
+        - "total_accionista": int (columna AA)
+        - "participaciones": list[ParticipacionSocietaria], hasta 4 (slots AB-BK)
+        """
         page.goto(self.url_base)
         self.delay_humano(1.0, 2.0)
 
-        # Radio "Identificación" - se selecciona por texto del label, no
-        # por ID (dinamico). ZK hace clickeable el <label>, no solo el
-        # <input>, para alternar el radio.
         page.click(f"label:has-text('{TEXTO_RADIO_IDENTIFICACION}')")
         self.delay_humano(0.3, 0.6)
 
@@ -58,14 +71,6 @@ class ScraperSCVSPersonas(BaseScraper):
         campo.type(cliente.identificacion, delay=100)
         self.delay_humano(1.0, 1.5)
 
-        # NO se hace clic en la sugerencia del panel - confirmado con
-        # evidencia real: ZK auto-completa el campo con el formato
-        # "ID | NOMBRE" apenas hay una sola coincidencia exacta, SIN
-        # necesitar clic. Hacer clic de todas formas en el panel (que
-        # en ese punto ya podria estar en un estado inconsistente)
-        # destruye el combobox completo y la pagina vuelve al
-        # formulario vacio. Solo se valida que el campo SI contenga
-        # el texto esperado (confirma que el auto-completado ocurrio).
         valor_campo = campo.input_value()
         if cliente.identificacion not in valor_campo:
             raise ScraperError(
@@ -74,21 +79,40 @@ class ScraperSCVSPersonas(BaseScraper):
                 resultado=ResultadoConsulta.ERROR_DESCONOCIDO,
             )
 
-        # Boton "Buscar" - el texto esta en un <td> hermano, no en el
-        # <button> mismo, por eso se hace clic en el contenedor
-        # "z-button" completo que envuelve tanto el boton como su texto.
         page.locator("span.z-button:has-text('Buscar')").first.click()
 
-        # Esperar explicitamente a que el encabezado "Accionista Actual
-        # en:" este visible, MAS un margen generoso adicional - la
-        # pagina tiene 8 secciones ZK pesadas y el timing parece
-        # inconsistente entre corridas (a veces alcanza con poco, a
-        # veces no). Se prioriza confiabilidad sobre velocidad aqui.
-        page.locator(f"td.z-caption-l:has-text('{TEXTO_ENCABEZADO_ACCIONISTA_ACTUAL}')").first.wait_for(state="visible", timeout=20000)
+        # El sitio puede responder con la pantalla de resultados, o con
+        # un mensaje rojo de "sin coincidencia" (identificacion sin
+        # registros - caso normal, no un error). Polling por ambos.
+        locator_sin_coincidencia = page.locator(f"div.z-div:has-text('{TEXTO_SIN_COINCIDENCIA}')")
+        locator_con_resultados = page.locator(f"td.z-caption-l:has-text('{TEXTO_ENCABEZADO_ACCIONISTA_ACTUAL}')")
+
+        tiempo_limite = time.time() + 20
+        sin_coincidencia = False
+        encontro_resultados = False
+        while time.time() < tiempo_limite:
+            if locator_sin_coincidencia.count() > 0:
+                sin_coincidencia = True
+                break
+            if locator_con_resultados.count() > 0:
+                encontro_resultados = True
+                break
+            page.wait_for_timeout(500)
+
+        if sin_coincidencia:
+            return {"total_presidente_rl": 0, "total_accionista": 0, "participaciones": []}
+
+        if not encontro_resultados:
+            raise ScraperError(
+                f"[{self.nombre_sitio}] Ni resultados ni mensaje de 'sin coincidencia' aparecieron tras 20s "
+                f"para '{cliente.identificacion}' - posible cambio en el sitio.",
+                resultado=ResultadoConsulta.ERROR_DESCONOCIDO,
+            )
+
         try:
             page.wait_for_load_state("networkidle", timeout=8000)
         except Exception:
-            pass  # si no llega a quedar inactivo del todo, seguimos igual tras el timeout
+            pass
         self.delay_humano(2.5, 3.5)
 
         from src.documentos.evidencia import capturar_evidencia
@@ -98,14 +122,18 @@ class ScraperSCVSPersonas(BaseScraper):
             subcarpeta=cliente.subcarpeta_evidencia,
         )
 
-        participaciones = self._extraer_accionista_actual(page)
+        filas_administracion = self._extraer_tabla(page, TEXTO_ENCABEZADO_ADMINISTRACION_ACTUAL)
+        filas_accionista = self._extraer_tabla(page, TEXTO_ENCABEZADO_ACCIONISTA_ACTUAL)
 
-        # Consulta cruzada por RUC via SRI para la Actividad Economica de
-        # cada empresa relacionada (maximo 3, ya limitado en la
-        # extraccion). Se usa SRI (no SCVS Companias) porque ese
-        # scraper ya extrae "actividad_economica" de forma confiable -
-        # SCVS Companias nunca extrajo ese campo, agregarlo ahi
-        # significaria codigo nuevo sin probar.
+        total_presidente_rl = len(filas_administracion)
+        total_accionista = len(filas_accionista)
+
+        participaciones = self._fusionar_por_ruc(filas_administracion, filas_accionista)
+        participaciones = participaciones[:MAXIMO_SLOTS]
+
+        # Consulta cruzada por RUC via SRI para Actividad Economica
+        # (Observaciones) y Fecha de Constitucion, en pestaña separada
+        # para no interferir con 'page' (que sigue en SCVS).
         for participacion in participaciones:
             pagina_sri = page.context.new_page()
             try:
@@ -115,47 +143,97 @@ class ScraperSCVSPersonas(BaseScraper):
                 )
                 datos_sri = self.scraper_sri.consultar_ruc(pagina_sri, cliente_empresa_relacionada)
                 participacion.actividad_economica = datos_sri.get("actividad_economica", "") or "No disponible"
+                participacion.fecha_constitucion = datos_sri.get("fecha_inicio_actividades", "") or "-"
             except Exception as e:
-                print(f"    [SCVS Personas] No se pudo obtener Actividad Económica de {participacion.nombre_empresa} ({participacion.ruc_empresa}) vía SRI: {type(e).__name__}: {e}")
+                print(f"    [SCVS Personas] No se pudo obtener datos SRI de {participacion.nombre_empresa} ({participacion.ruc_empresa}): {type(e).__name__}: {e}")
                 participacion.actividad_economica = "No disponible"
             finally:
-                # Pestaña separada para no interferir con 'page' (que
-                # sigue mostrando los resultados de SCVS) - confirmado
-                # con evidencia real: reutilizar la misma pagina hacia
-                # SRI dejaba la pantalla de SCVS en un estado raro.
                 pagina_sri.close()
 
-        return participaciones
+        return {
+            "total_presidente_rl": total_presidente_rl,
+            "total_accionista": total_accionista,
+            "participaciones": participaciones,
+        }
 
-    def _extraer_accionista_actual(self, page: Page) -> list[ParticipacionSocietaria]:
+    def _extraer_tabla(self, page: Page, texto_encabezado: str) -> list[dict]:
         """
-        Localiza la sección "Accionista Actual en:" por su texto de
-        encabezado. IMPORTANTE: el encabezado y la tabla de datos NO
-        estan anidados (padre-hijo) - son divs HERMANOS en el DOM
-        (confirmado con evidencia real): el div exterior exacto
-        "z-groupbox-3d" contiene solo el encabezado, y la tabla de
-        datos vive en un div HERMANO siguiente (id terminado en
-        "-cave"). Se sube con clase EXACTA "z-groupbox-3d" (no
-        contains(), que enganchaba erroneamente con "z-groupbox-3d-hm"/
-        "-hl"/"-hr", subclases mas cercanas con nombre parecido), y
-        luego se toma el siguiente hermano para buscar las filas.
+        Extrae todas las filas de una seccion identificada por su texto
+        de encabezado ("Administración Actual en:" o "Accionista Actual
+        en:"). Devuelve dicts crudos (sin fusionar todavia) con las
+        columnas relevantes de cada tabla - las 2 secciones NO tienen
+        las mismas columnas, por eso se detecta cual es por el texto del
+        encabezado recibido.
+
+        Estructura DOM confirmada con evidencia real: el div exterior
+        exacto "z-groupbox-3d" es ancestro del encabezado, y el
+        contenedor de datos es su HIJO DIRECTO con clase
+        "z-groupbox-3d-cnt" (NO un hermano, y NO se debe usar
+        contains() para el ancestro - engancha con subclases como
+        "z-groupbox-3d-hm").
         """
-        encabezado = page.locator(f"td.z-caption-l:has-text('{TEXTO_ENCABEZADO_ACCIONISTA_ACTUAL}')").first
+        encabezado = page.locator(f"td.z-caption-l:has-text('{texto_encabezado}')").first
         if encabezado.count() == 0:
             return []
 
         contenedor_datos = encabezado.locator(
             "xpath=ancestor::div[@class='z-groupbox-3d'][1]/div[contains(@class,'z-groupbox-3d-cnt')]"
         )
-        filas = contenedor_datos.locator("tr.z-listitem").all()
+        filas_dom = contenedor_datos.locator("tr.z-listitem").all()
 
-        participaciones = []
-        for fila in filas[:3]:  # maximo 3, segun especificacion original
+        filas = []
+        for fila in filas_dom:
             celdas = fila.locator("td").all_inner_texts()
-            if len(celdas) < 3:
-                continue
-            nombre_empresa = celdas[1].strip()
-            ruc_empresa = celdas[2].strip()
-            participaciones.append(ParticipacionSocietaria(ruc_empresa=ruc_empresa, nombre_empresa=nombre_empresa))
+            celdas = [c.strip() for c in celdas]
+            if texto_encabezado == TEXTO_ENCABEZADO_ADMINISTRACION_ACTUAL:
+                # Columnas: Expediente, Nombre, Ruc, Nacionalidad, Cargo, ...
+                if len(celdas) < 5:
+                    continue
+                filas.append({"nombre": celdas[1], "ruc": celdas[2], "cargo": celdas[4]})
+            else:
+                # Columnas: Expediente, Nombre, Ruc, Capital Invertido, Capital Total Cía., Valor Nominal, Situación Legal, Posesión Efectiva
+                if len(celdas) < 7:
+                    continue
+                filas.append({
+                    "nombre": celdas[1], "ruc": celdas[2],
+                    "capital_invertido": celdas[3], "situacion_legal": celdas[6],
+                })
 
-        return participaciones
+        return filas
+
+    def _fusionar_por_ruc(self, filas_administracion: list[dict], filas_accionista: list[dict]) -> list[ParticipacionSocietaria]:
+        """
+        Fusiona ambas listas por RUC de empresa. Si una empresa aparece
+        en ambas, el Cargo combina los 2 roles ("Accionista / CARGO_TEXTUAL").
+        Ordena por Capital Invertido descendente (confirmado por el
+        usuario como la regla real de orden) - empresas sin capital
+        (solo en Administración) se tratan como 0, quedan al final.
+        """
+        por_ruc: dict[str, ParticipacionSocietaria] = {}
+
+        for fila in filas_accionista:
+            ruc = fila["ruc"]
+            por_ruc[ruc] = ParticipacionSocietaria(
+                ruc_empresa=ruc, nombre_empresa=fila["nombre"],
+                cargo="Accionista",
+                capital_invertido=fila["capital_invertido"],
+                situacion_legal=fila["situacion_legal"],
+            )
+
+        for fila in filas_administracion:
+            ruc = fila["ruc"]
+            if ruc in por_ruc:
+                por_ruc[ruc].cargo = f"Accionista / {fila['cargo']}"
+            else:
+                por_ruc[ruc] = ParticipacionSocietaria(
+                    ruc_empresa=ruc, nombre_empresa=fila["nombre"],
+                    cargo=fila["cargo"],
+                )
+
+        def _capital_numerico(p: ParticipacionSocietaria) -> float:
+            try:
+                return float(p.capital_invertido)
+            except (ValueError, TypeError):
+                return 0.0
+
+        return sorted(por_ruc.values(), key=_capital_numerico, reverse=True)

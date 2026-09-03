@@ -242,12 +242,33 @@ def _fallo(resultado) -> bool:
     return isinstance(resultado, dict) and resultado.get("requiere_revision_manual") is True
 
 
-def _calcular_sitios_a_revisar(resultados: dict) -> str:
-    nombres = [
-        _MAPEO_NOMBRES_LEGIBLES.get(sitio, sitio)
-        for sitio, resultado in resultados.items()
-        if _fallo(resultado)
+def _es_sitio_fuera_de_servicio(texto_error: str) -> bool:
+    """
+    Distingue un fallo de NAVEGACION (el sitio no cargo/no respondio -
+    Page.goto fallido, conexion rechazada/reseteada) de otros tipos de
+    fallo (elemento no encontrado, captcha, timeout de interaccion) -
+    solicitado por Cumplimiento (2026-09-03): estos casos deben quedar
+    etiquetados explicitamente como "Sitio Fuera de Servicio", no como
+    un fallo generico.
+    """
+    señales_sitio_caido = [
+        "Page.goto", "net::ERR_", "ERR_CONNECTION", "ERR_NAME_NOT_RESOLVED",
+        "ERR_TIMED_OUT", "ERR_INTERNET_DISCONNECTED", "ERR_ADDRESS_UNREACHABLE",
     ]
+    return any(señal in texto_error for señal in señales_sitio_caido)
+
+
+def _calcular_sitios_a_revisar(resultados: dict) -> str:
+    nombres = []
+    for sitio, resultado in resultados.items():
+        if not _fallo(resultado):
+            continue
+        nombre_legible = _MAPEO_NOMBRES_LEGIBLES.get(sitio, sitio)
+        texto_error = resultado.get("error", "") if isinstance(resultado, dict) else ""
+        if _es_sitio_fuera_de_servicio(texto_error):
+            nombres.append(f"{nombre_legible} (Sitio Fuera de Servicio)")
+        else:
+            nombres.append(nombre_legible)
     return " / ".join(nombres) if nombres else "-"
 
 
@@ -315,6 +336,18 @@ def escribir_resultados_excel(writer: GraphAPIWriter, cliente: Cliente, resultad
     if "scvs_companias" in resultados and not _fallo(resultados["scvs_companias"]):
         scvs = resultados["scvs_companias"]
         writer.escribir_scvs_companias(fila, scvs.registrado, scvs.cumplimiento_obligaciones)
+
+    if not _fallo(resultados.get("scvs_personas")):
+        scvs_personas = resultados["scvs_personas"]
+        # nombre de quien se busco en SCVS Personas - el cliente mismo
+        # si es Natural, o el representante legal si es Juridica (mismo
+        # criterio que determina "cliente_para_persona" en procesar_cliente).
+        cadena = resultados.get("cadena_representante_legal")
+        if isinstance(cadena, dict) and cadena.get("persona_encontrada"):
+            nombre_persona_relacionada = cadena["nombre"]
+        else:
+            nombre_persona_relacionada = cliente.nombres_completos
+        writer.escribir_scvs_personas(fila, scvs_personas, nombre_persona_relacionada)
 
     if not _fallo(resultados.get("antecedentes_penales")):
         ap = resultados["antecedentes_penales"]

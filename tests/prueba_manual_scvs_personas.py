@@ -15,15 +15,24 @@ with sync_playwright() as p:
 
     scraper = ScraperSCVSPersonas(context=context, url_base=URL_SCVS_PERSONAS, url_base_sri=URL_SRI_RUC)
 
-    cliente = Cliente(identificacion="1801099787", tipo_persona=TipoPersona.NATURAL, nombres_completos="VASCONEZ CALLEJAS HERNAN FRANCISCO")
+    # Cedula (10 digitos), no RUC - persona Natural
+    cliente = Cliente(identificacion="1706794003", tipo_persona=TipoPersona.NATURAL, nombres_completos="CORREDOR CAMARGO SILVERIO")
 
     resultado = scraper.buscar_cliente(page, cliente)
 
-    print(f"\nTotal de participaciones societarias encontradas: {len(resultado)}\n")
-    for p_soc in resultado:
+    print(f"\nTotal como Presidente/RL (Z): {resultado['total_presidente_rl']}")
+    print(f"Total como Accionista (AA): {resultado['total_accionista']}")
+    print(f"\nParticipaciones en los slots ({len(resultado['participaciones'])}):\n")
+
+    for p_soc in resultado["participaciones"]:
         print(f"  RUC: {p_soc.ruc_empresa}")
         print(f"  Nombre: {p_soc.nombre_empresa}")
+        print(f"  Cargo: {p_soc.cargo}")
+        print(f"  Capital Invertido: {p_soc.capital_invertido}")
+        print(f"  Situación Legal: {p_soc.situacion_legal}")
+        print(f"  Fecha de Constitución: {p_soc.fecha_constitucion}")
         print(f"  Actividad Económica: {p_soc.actividad_economica}")
+        print(f"  Patrimonio (Último año): {p_soc.patrimonio_ultimo_anio}")
         print()
 
     input("Presiona ENTER para cerrar...")

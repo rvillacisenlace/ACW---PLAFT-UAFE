@@ -128,14 +128,26 @@ class CompaniaSCVS:
     ruta_pdf: str = ""
 
 @dataclass
+class DeudaMunicipal:
+    tiene_deuda: bool = False
+    valor_total: str = "$0.00"
+    registrado: bool = True
+    mensaje: str = ""
+
+@dataclass
 class ParticipacionSocietaria:
     ruc_empresa: str = ""
     nombre_empresa: str = ""
-    actividad_economica: str = ""  # obtenido via consulta cruzada a SCVS Companias
+    cargo: str = ""  # "Accionista", "PRESIDENTE", "Accionista / PRESIDENTE", etc.
+    capital_invertido: str = "-"
+    situacion_legal: str = "-"
+    fecha_constitucion: str = "-"
+    actividad_economica: str = ""  # obtenido via consulta cruzada a SRI (Observaciones)
+    patrimonio_ultimo_anio: str = "-"  # pendiente - requiere modulo BG-3 de SCVS, sin explorar aun
 
 @dataclass
 class LogEntry:
-    fecha_hora: "datetime"
+    fecha_hora: datetime
     cliente_identificacion: str
     cliente_nombre: str
     usuario_proceso: str
@@ -157,10 +169,3 @@ class LogEntry:
             "ruta_evidencia": self.ruta_evidencia,
             "detalle": self.detalle,
         }
-
-@dataclass
-class DeudaMunicipal:
-    tiene_deuda: bool = False
-    valor_total: str = "$0.00"
-    registrado: bool = True
-    mensaje: str = ""

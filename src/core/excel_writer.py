@@ -74,6 +74,18 @@ class LocalExcelWriter(ExcelWriter):
     COL_CONTRALORIA_TIEMPO = 136
     COL_CONTRALORIA_ULTIMO_ANIO = 137
 
+    # Bloque SCVS Personas (Z-BK). "RUC", "Cargo", "Fecha de Constitucion",
+    # "Observaciones" se repiten en muchas otras partes de la hoja -
+    # indices directos, mismo criterio que los demas bloques.
+    COL_SCVS_PERSONAS_TOTAL_PRESIDENTE_RL = 45  # AS
+    COL_SCVS_PERSONAS_TOTAL_ACCIONISTA = 46  # AT
+    COL_SCVS_PERSONAS_SLOTS = [
+        (47, 48, 49, 50, 51, 52, 53, 54, 55),  # AU-BC
+        (56, 57, 58, 59, 60, 61, 62, 63, 64),  # BD-BL
+        (65, 66, 67, 68, 69, 70, 71, 72, 73),  # BM-BU
+        (74, 75, 76, 77, 78, 79, 80, 81, 82),  # BV-CD
+    ]
+
     COL_SENTENCIADOS_TOTAL = 143
     COL_SENTENCIADOS_SLOTS = [
         (144, 145, 146, 147),
@@ -172,19 +184,19 @@ class LocalExcelWriter(ExcelWriter):
         self._escribir_valor_con_estilo(fila_excel, col, "SI" if posee_antecedentes else "NO")
 
     def escribir_sri_ruc(self, fila_excel: int, datos: dict, datos_representante_legal: dict = None) -> None:
-        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RAZON_SOCIAL, datos.get("razon_social", ""))
-        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_ESTADO_CONTRIBUYENTE, datos.get("estado_contribuyente", ""))
-        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_FECHA_INICIO, datos.get("fecha_inicio_actividades", ""))
-        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_FECHA_CESE, datos.get("fecha_cese_actividades", ""))
-        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_FECHA_REINICIO, datos.get("fecha_reinicio_actividades", ""))
-        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_CONTRIBUYENTE_FANTASMA, datos.get("contribuyente_fantasma", ""))
-        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_TRANSACCIONES_INEXISTENTES, datos.get("contribuyente_transacciones_inexistentes", ""))
-        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_ACTIVIDAD_ECONOMICA, datos.get("actividad_economica", ""))
+        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RAZON_SOCIAL, datos.get("razon_social", "") or "-")
+        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_ESTADO_CONTRIBUYENTE, datos.get("estado_contribuyente", "") or "-")
+        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_FECHA_INICIO, datos.get("fecha_inicio_actividades", "") or "-")
+        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_FECHA_CESE, datos.get("fecha_cese_actividades", "") or "-")
+        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_FECHA_REINICIO, datos.get("fecha_reinicio_actividades", "") or "-")
+        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_CONTRIBUYENTE_FANTASMA, datos.get("contribuyente_fantasma", "") or "-")
+        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_TRANSACCIONES_INEXISTENTES, datos.get("contribuyente_transacciones_inexistentes", "") or "-")
+        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_ACTIVIDAD_ECONOMICA, datos.get("actividad_economica", "") or "-")
 
-        self._escribir_valor_con_estilo(fila_excel, self._col("Representante Legal"), datos.get("representante_legal_nombre", ""))
-        self._escribir_valor_con_estilo(fila_excel, self._col("ID Representante Legal"), datos.get("representante_legal_identificacion", ""))
-        self._escribir_valor_con_estilo(fila_excel, self._col("Dirección Domicilio"), datos.get("direccion_matriz", ""))
-        self._escribir_valor_con_estilo(fila_excel, self._col("Fecha de Constitucion"), datos.get("fecha_inicio_actividades", ""))
+        self._escribir_valor_con_estilo(fila_excel, self._col("Representante Legal"), datos.get("representante_legal_nombre", "") or "-")
+        self._escribir_valor_con_estilo(fila_excel, self._col("ID Representante Legal"), datos.get("representante_legal_identificacion", "") or "-")
+        self._escribir_valor_con_estilo(fila_excel, self._col("Dirección Domicilio"), datos.get("direccion_matriz", "") or "-")
+        self._escribir_valor_con_estilo(fila_excel, self._col("Fecha de Constitucion"), datos.get("fecha_inicio_actividades", "") or "-")
 
         columnas_rl = [
             self.COL_SRI_RL_RAZON_SOCIAL, self.COL_SRI_RL_ESTADO_CONTRIBUYENTE,
@@ -196,14 +208,14 @@ class LocalExcelWriter(ExcelWriter):
             for col in columnas_rl:
                 self._escribir_valor_con_estilo(fila_excel, col, "-")
         else:
-            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_RAZON_SOCIAL, datos_representante_legal.get("razon_social", ""))
-            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_ESTADO_CONTRIBUYENTE, datos_representante_legal.get("estado_contribuyente", ""))
-            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_FECHA_INICIO, datos_representante_legal.get("fecha_inicio_actividades", ""))
-            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_FECHA_CESE, datos_representante_legal.get("fecha_cese_actividades", ""))
-            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_FECHA_REINICIO, datos_representante_legal.get("fecha_reinicio_actividades", ""))
-            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_ACTIVIDAD_ECONOMICA, datos_representante_legal.get("actividad_economica", ""))
-            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_CONTRIBUYENTE_FANTASMA, datos_representante_legal.get("contribuyente_fantasma", ""))
-            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_TRANSACCIONES_INEXISTENTES, datos_representante_legal.get("contribuyente_transacciones_inexistentes", ""))
+            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_RAZON_SOCIAL, datos_representante_legal.get("razon_social", "") or "-")
+            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_ESTADO_CONTRIBUYENTE, datos_representante_legal.get("estado_contribuyente", "") or "-")
+            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_FECHA_INICIO, datos_representante_legal.get("fecha_inicio_actividades", "") or "-")
+            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_FECHA_CESE, datos_representante_legal.get("fecha_cese_actividades", "") or "-")
+            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_FECHA_REINICIO, datos_representante_legal.get("fecha_reinicio_actividades", "") or "-")
+            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_ACTIVIDAD_ECONOMICA, datos_representante_legal.get("actividad_economica", "") or "-")
+            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_CONTRIBUYENTE_FANTASMA, datos_representante_legal.get("contribuyente_fantasma", "") or "-")
+            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_TRANSACCIONES_INEXISTENTES, datos_representante_legal.get("contribuyente_transacciones_inexistentes", "") or "-")
 
     def escribir_sri_deudas(self, fila_excel: int, tiene_deuda_firme: bool, valor_deuda_firme: str = "") -> None:
         col = self._col("SRI DEUDAS")
@@ -289,6 +301,35 @@ class LocalExcelWriter(ExcelWriter):
         self._escribir_valor_con_estilo(fila_excel, self.COL_CONTRALORIA_CARGO, resumen.get("cargo", "-"))
         self._escribir_valor_con_estilo(fila_excel, self.COL_CONTRALORIA_TIEMPO, resumen.get("tiempo", "-"))
         self._escribir_valor_con_estilo(fila_excel, self.COL_CONTRALORIA_ULTIMO_ANIO, resumen.get("ultimo_anio_en_cargo", "-"))
+
+    def escribir_scvs_personas(self, fila_excel: int, resultado: dict, nombre_persona_relacionada: str) -> None:
+        """
+        resultado: dict devuelto por ScraperSCVSPersonas.buscar_cliente()
+        ({"total_presidente_rl", "total_accionista", "participaciones"}).
+        nombre_persona_relacionada: nombre de quien se busco (cliente o
+        representante legal) - se repite igual en cada slot ocupado,
+        confirmado con Excel real de referencia.
+        """
+        self._escribir_valor_con_estilo(fila_excel, self.COL_SCVS_PERSONAS_TOTAL_PRESIDENTE_RL, resultado.get("total_presidente_rl", 0))
+        self._escribir_valor_con_estilo(fila_excel, self.COL_SCVS_PERSONAS_TOTAL_ACCIONISTA, resultado.get("total_accionista", 0))
+
+        participaciones = resultado.get("participaciones", [])
+        for i, columnas_slot in enumerate(self.COL_SCVS_PERSONAS_SLOTS):
+            col_id, col_empresa, col_ruc, col_cargo, col_capital, col_situacion, col_fecha, col_obs, col_patrimonio = columnas_slot
+            if i < len(participaciones):
+                p = participaciones[i]
+                self._escribir_valor_con_estilo(fila_excel, col_id, nombre_persona_relacionada)
+                self._escribir_valor_con_estilo(fila_excel, col_empresa, p.nombre_empresa)
+                self._escribir_valor_con_estilo(fila_excel, col_ruc, p.ruc_empresa)
+                self._escribir_valor_con_estilo(fila_excel, col_cargo, p.cargo)
+                self._escribir_valor_con_estilo(fila_excel, col_capital, p.capital_invertido)
+                self._escribir_valor_con_estilo(fila_excel, col_situacion, p.situacion_legal)
+                self._escribir_valor_con_estilo(fila_excel, col_fecha, p.fecha_constitucion)
+                self._escribir_valor_con_estilo(fila_excel, col_obs, p.actividad_economica)
+                self._escribir_valor_con_estilo(fila_excel, col_patrimonio, p.patrimonio_ultimo_anio)
+            else:
+                for col in columnas_slot:
+                    self._escribir_valor_con_estilo(fila_excel, col, "-")
 
     def escribir_sentenciados(self, fila_excel: int, total_encontrado: int, top3: list) -> None:
         self._escribir_valor_con_estilo(fila_excel, self.COL_SENTENCIADOS_TOTAL, str(total_encontrado))
@@ -416,41 +457,21 @@ class GraphAPIWriter(ExcelWriter):
         self._refrescar_token()
         return {**self.headers, "workbook-session-id": self.session_id}
 
-    def _patch_con_reintento_sesion(self, url: str, json_body: dict, intentos_maximos: int = 3):
+    def _patch_con_reintento_sesion(self, url: str, json_body: dict):
         """
-        PATCH con recuperación automática ante 2 tipos de fallo
-        transitorio, confirmados ambos con evidencia real:
-        1. Sesión expirada (400 + "InvalidSession") - se recrea la
-           sesión y se reintenta.
-        2. Servidor de Graph sobrecargado (502/503/504) - se espera un
-           poco (backoff simple) y se reintenta con la misma sesión,
-           sin recrearla (no es un problema de  sesión, es del servidor).
-        Sin esto, un solo error transitorio de Graph tumbaba TODA la
-        escritura de un cliente completo (Excel + evidencia), perdiendo
-        el trabajo de scraping ya hecho para ese cliente.
+        PATCH con recuperación automática de sesión expirada. Confirmado
+        con evidencia real (2026-09-02): en corridas largas (18 sitios
+        antes de llegar a escribir el Excel), la sesión de Graph API
+        puede expirar/invalidarse por un error transitorio del lado del
+        servidor ("InvalidSession"). Se recrea la sesión UNA vez y se
+        reintenta antes de fallar del todo.
         """
-        import time
-
-        for intento in range(1, intentos_maximos + 1):
+        resp = requests.patch(url, headers=self._headers_con_sesion(), json=json_body)
+        if resp.status_code == 400 and "InvalidSession" in resp.text:
+            print("    [Graph API] Sesión expirada - recreando sesión y reintentando...")
+            self.session_id = self._crear_sesion()
             resp = requests.patch(url, headers=self._headers_con_sesion(), json=json_body)
-
-            if resp.ok:
-                return resp
-
-            if resp.status_code == 400 and "InvalidSession" in resp.text:
-                print(f"    [Graph API] Sesión expirada (intento {intento}/{intentos_maximos}) - recreando sesión...")
-                self.session_id = self._crear_sesion()
-                continue
-
-            if resp.status_code in (502, 503, 504):
-                espera = intento * 3  # backoff simple: 3s, 6s, 9s
-                print(f"    [Graph API] Error {resp.status_code} del servidor (intento {intento}/{intentos_maximos}) - esperando {espera}s y reintentando...")
-                time.sleep(espera)
-                continue
-
-            return resp  # error distinto - no reintentable, se devuelve tal cual
-
-        return resp  # se agotaron los intentos - se devuelve el ultimo intento, raise_for_status() lo reportará
+        return resp
 
     def _leer_encabezados(self) -> dict:
         url = f"{self.base_url}/worksheets/{self.nombre_hoja}/range(address='1:3')"
@@ -592,6 +613,15 @@ class GraphAPIWriter(ExcelWriter):
     COL_CONTRALORIA_TIEMPO = 135
     COL_CONTRALORIA_ULTIMO_ANIO = 136
 
+    COL_SCVS_PERSONAS_TOTAL_PRESIDENTE_RL = 44
+    COL_SCVS_PERSONAS_TOTAL_ACCIONISTA = 45
+    COL_SCVS_PERSONAS_SLOTS = [
+        (46, 47, 48, 49, 50, 51, 52, 53, 54),
+        (55, 56, 57, 58, 59, 60, 61, 62, 63),
+        (64, 65, 66, 67, 68, 69, 70, 71, 72),
+        (73, 74, 75, 76, 77, 78, 79, 80, 81),
+    ]
+
     COL_SENTENCIADOS_TOTAL = 142
     COL_SENTENCIADOS_SLOTS = [
         (143, 144, 145, 146),
@@ -608,19 +638,19 @@ class GraphAPIWriter(ExcelWriter):
     ]
 
     def escribir_sri_ruc(self, fila_excel: int, datos: dict, datos_representante_legal: dict = None) -> None:
-        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RAZON_SOCIAL, datos.get("razon_social", ""))
-        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_ESTADO_CONTRIBUYENTE, datos.get("estado_contribuyente", ""))
-        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_FECHA_INICIO, datos.get("fecha_inicio_actividades", ""))
-        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_FECHA_CESE, datos.get("fecha_cese_actividades", ""))
-        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_FECHA_REINICIO, datos.get("fecha_reinicio_actividades", ""))
-        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_CONTRIBUYENTE_FANTASMA, datos.get("contribuyente_fantasma", ""))
-        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_TRANSACCIONES_INEXISTENTES, datos.get("contribuyente_transacciones_inexistentes", ""))
-        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_ACTIVIDAD_ECONOMICA, datos.get("actividad_economica", ""))
+        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RAZON_SOCIAL, datos.get("razon_social", "") or "-")
+        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_ESTADO_CONTRIBUYENTE, datos.get("estado_contribuyente", "") or "-")
+        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_FECHA_INICIO, datos.get("fecha_inicio_actividades", "") or "-")
+        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_FECHA_CESE, datos.get("fecha_cese_actividades", "") or "-")
+        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_FECHA_REINICIO, datos.get("fecha_reinicio_actividades", "") or "-")
+        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_CONTRIBUYENTE_FANTASMA, datos.get("contribuyente_fantasma", "") or "-")
+        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_TRANSACCIONES_INEXISTENTES, datos.get("contribuyente_transacciones_inexistentes", "") or "-")
+        self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_ACTIVIDAD_ECONOMICA, datos.get("actividad_economica", "") or "-")
 
-        self._escribir_valor_con_estilo(fila_excel, self._col("Representante Legal"), datos.get("representante_legal_nombre", ""))
-        self._escribir_valor_con_estilo(fila_excel, self._col("ID Representante Legal"), datos.get("representante_legal_identificacion", ""))
-        self._escribir_valor_con_estilo(fila_excel, self._col("Dirección Domicilio"), datos.get("direccion_matriz", ""))
-        self._escribir_valor_con_estilo(fila_excel, self._col("Fecha de Constitucion"), datos.get("fecha_inicio_actividades", ""))
+        self._escribir_valor_con_estilo(fila_excel, self._col("Representante Legal"), datos.get("representante_legal_nombre", "") or "-")
+        self._escribir_valor_con_estilo(fila_excel, self._col("ID Representante Legal"), datos.get("representante_legal_identificacion", "") or "-")
+        self._escribir_valor_con_estilo(fila_excel, self._col("Dirección Domicilio"), datos.get("direccion_matriz", "") or "-")
+        self._escribir_valor_con_estilo(fila_excel, self._col("Fecha de Constitucion"), datos.get("fecha_inicio_actividades", "") or "-")
 
         columnas_rl = [
             self.COL_SRI_RL_RAZON_SOCIAL, self.COL_SRI_RL_ESTADO_CONTRIBUYENTE,
@@ -632,14 +662,14 @@ class GraphAPIWriter(ExcelWriter):
             for col in columnas_rl:
                 self._escribir_valor_con_estilo(fila_excel, col, "-")
         else:
-            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_RAZON_SOCIAL, datos_representante_legal.get("razon_social", ""))
-            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_ESTADO_CONTRIBUYENTE, datos_representante_legal.get("estado_contribuyente", ""))
-            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_FECHA_INICIO, datos_representante_legal.get("fecha_inicio_actividades", ""))
-            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_FECHA_CESE, datos_representante_legal.get("fecha_cese_actividades", ""))
-            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_FECHA_REINICIO, datos_representante_legal.get("fecha_reinicio_actividades", ""))
-            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_ACTIVIDAD_ECONOMICA, datos_representante_legal.get("actividad_economica", ""))
-            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_CONTRIBUYENTE_FANTASMA, datos_representante_legal.get("contribuyente_fantasma", ""))
-            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_TRANSACCIONES_INEXISTENTES, datos_representante_legal.get("contribuyente_transacciones_inexistentes", ""))
+            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_RAZON_SOCIAL, datos_representante_legal.get("razon_social", "") or "-")
+            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_ESTADO_CONTRIBUYENTE, datos_representante_legal.get("estado_contribuyente", "") or "-")
+            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_FECHA_INICIO, datos_representante_legal.get("fecha_inicio_actividades", "") or "-")
+            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_FECHA_CESE, datos_representante_legal.get("fecha_cese_actividades", "") or "-")
+            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_FECHA_REINICIO, datos_representante_legal.get("fecha_reinicio_actividades", "") or "-")
+            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_ACTIVIDAD_ECONOMICA, datos_representante_legal.get("actividad_economica", "") or "-")
+            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_CONTRIBUYENTE_FANTASMA, datos_representante_legal.get("contribuyente_fantasma", "") or "-")
+            self._escribir_valor_con_estilo(fila_excel, self.COL_SRI_RL_TRANSACCIONES_INEXISTENTES, datos_representante_legal.get("contribuyente_transacciones_inexistentes", "") or "-")
 
     def escribir_sri_deudas(self, fila_excel: int, tiene_deuda_firme: bool, valor_deuda_firme: str = "") -> None:
         col = self._col("SRI DEUDAS")
@@ -725,6 +755,35 @@ class GraphAPIWriter(ExcelWriter):
         self._escribir_valor_con_estilo(fila_excel, self.COL_CONTRALORIA_CARGO, resumen.get("cargo", "-"))
         self._escribir_valor_con_estilo(fila_excel, self.COL_CONTRALORIA_TIEMPO, resumen.get("tiempo", "-"))
         self._escribir_valor_con_estilo(fila_excel, self.COL_CONTRALORIA_ULTIMO_ANIO, resumen.get("ultimo_anio_en_cargo", "-"))
+
+    def escribir_scvs_personas(self, fila_excel: int, resultado: dict, nombre_persona_relacionada: str) -> None:
+        """
+        resultado: dict devuelto por ScraperSCVSPersonas.buscar_cliente()
+        ({"total_presidente_rl", "total_accionista", "participaciones"}).
+        nombre_persona_relacionada: nombre de quien se busco (cliente o
+        representante legal) - se repite igual en cada slot ocupado,
+        confirmado con Excel real de referencia.
+        """
+        self._escribir_valor_con_estilo(fila_excel, self.COL_SCVS_PERSONAS_TOTAL_PRESIDENTE_RL, resultado.get("total_presidente_rl", 0))
+        self._escribir_valor_con_estilo(fila_excel, self.COL_SCVS_PERSONAS_TOTAL_ACCIONISTA, resultado.get("total_accionista", 0))
+
+        participaciones = resultado.get("participaciones", [])
+        for i, columnas_slot in enumerate(self.COL_SCVS_PERSONAS_SLOTS):
+            col_id, col_empresa, col_ruc, col_cargo, col_capital, col_situacion, col_fecha, col_obs, col_patrimonio = columnas_slot
+            if i < len(participaciones):
+                p = participaciones[i]
+                self._escribir_valor_con_estilo(fila_excel, col_id, nombre_persona_relacionada)
+                self._escribir_valor_con_estilo(fila_excel, col_empresa, p.nombre_empresa)
+                self._escribir_valor_con_estilo(fila_excel, col_ruc, p.ruc_empresa)
+                self._escribir_valor_con_estilo(fila_excel, col_cargo, p.cargo)
+                self._escribir_valor_con_estilo(fila_excel, col_capital, p.capital_invertido)
+                self._escribir_valor_con_estilo(fila_excel, col_situacion, p.situacion_legal)
+                self._escribir_valor_con_estilo(fila_excel, col_fecha, p.fecha_constitucion)
+                self._escribir_valor_con_estilo(fila_excel, col_obs, p.actividad_economica)
+                self._escribir_valor_con_estilo(fila_excel, col_patrimonio, p.patrimonio_ultimo_anio)
+            else:
+                for col in columnas_slot:
+                    self._escribir_valor_con_estilo(fila_excel, col, "-")
 
     def escribir_sentenciados(self, fila_excel: int, total_encontrado: int, top3: list) -> None:
         self._escribir_valor_con_estilo(fila_excel, self.COL_SENTENCIADOS_TOTAL, str(total_encontrado))
