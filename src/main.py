@@ -1,11 +1,10 @@
 """
 Orquestador principal - ACW PLAFT UAFE.
 
-Lee clientes pendientes del Excel real (LocalExcelWriter por ahora -
-cuando se decida pasar a produccion, GraphAPIWriter implementa la
-misma interfaz ExcelWriter, es un cambio de una linea), corre los 18
-sitios para cada uno, escribe los resultados de vuelta al Excel, y
-marca el ESTADO final.
+Lee clientes pendientes del Excel real en OneDrive (GraphAPIWriter),
+corre los 18 sitios para cada uno, escribe los resultados de vuelta al
+Excel, sube la evidencia a OneDrive, y registra cada intento en el log
+de auditoría (data/logs/auditoria_YYYY-MM-DD.jsonl).
 
 Usa channel="chrome" en TODO el navegador (no solo Salud) para
 simplificar - Chrome real funciona igual de bien para el resto de
@@ -14,9 +13,18 @@ sitios, evita manejar 2 instancias de navegador para esta demo.
 Cada llamada a un sitio está aislada con try/except - un fallo en un
 sitio NUNCA detiene el resto (principio de diseño confirmado).
 """
+import os
+from datetime import datetime
+
 from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth
-from src.core.models import Cliente, TipoPersona
+
+from src.core.models import Cliente, TipoPersona, ResultadoConsulta
+from src.core.logger import registrar_evento
+from src.core.excel_writer import GraphAPIWriter
+from src.core.graph_uploader import GraphUploader
+from src.core.contador_diario import limite_alcanzado, incrementar_contador_hoy, obtener_contador_hoy
+
 from src.scrapers.sitio_funcion_judicial import ScraperFuncionJudicial
 from src.scrapers.sitio_fiscalia import ScraperFiscalia
 from src.scrapers.sitio_sentenciados import ScraperSentenciados
@@ -37,12 +45,6 @@ from src.scrapers.sitio_municipio_manta import ScraperMunicipioManta
 from src.scrapers.sitio_sercop_proveedor import ScraperSERCOPProveedor
 from src.scrapers.sitio_sercop_certificados import ScraperSERCOPCertificados
 from src.scrapers.cadena_representante import resolver_representante_legal
-from src.core.excel_writer import LocalExcelWriter
-from src.core.contador_diario import limite_alcanzado, incrementar_contador_hoy, obtener_contador_hoy
-from src.core.excel_writer import GraphAPIWriter
-from src.core.graph_uploader import GraphUploader
-from datetime import datetime
-import os
 
 RUTA_EXCEL_LOCAL = "templates/Matriz Revisión Clientes.xlsx"
 
@@ -50,7 +52,6 @@ RUTA_EXCEL_LOCAL = "templates/Matriz Revisión Clientes.xlsx"
 # hardcodeado (mismo criterio que el proyecto hermano): si falta algun
 # parametro, el programa se detiene con un error claro en vez de seguir
 # corriendo en silencio contra una URL vieja/desactualizada.
-import os
 _writer_parametros = GraphAPIWriter(
     cuenta_onedrive=os.getenv("CUENTA_ONEDRIVE", "unidadq@enlace.ec"),
     drive_id=os.getenv("GRAPH_DRIVE_ID"),
@@ -72,7 +73,7 @@ _MAPEO_URLS = {
     "salud": "URL_SALUD",
     "iess": "URL_IESS",
     "scvs_companias": "URL_SCVS_COMPANIAS",
-        "scvs_personas": "URL_SCVS_PERSONA",
+    "scvs_personas": "URL_SCVS_PERSONA",
     "contraloria": "URL_CONTRALORIA",
     "municipio_quito": "URL_MUNICIPIO_QUITO",
     "municipio_cuenca": "URL_MUNICIPIO_CUENCA",
@@ -98,6 +99,7 @@ _MAPEO_NOMBRES_LEGIBLES = {
     "salud": "Salud",
     "iess": "IESS",
     "scvs_companias": "SCVS Compañías",
+    "scvs_personas": "SCVS Personas",
     "antecedentes_penales": "Antecedentes Penales",
     "sentenciados": "Sentenciados",
     "funcion_judicial": "Función Judicial",
@@ -113,6 +115,16 @@ if _faltantes:
 URLS = {clave: _parametros[param] for clave, param in _MAPEO_URLS.items()}
 
 
+def _calcular_ruta_evidencia(cliente: Cliente) -> str:
+    """Misma logica de carpeta que ya usan capturar_evidencia()/
+    guardar_pdf_local() - carpeta raiz de este cliente, sin el
+    subdirectorio de cada sitio."""
+    ahora = datetime.now()
+    return os.path.abspath(os.path.join(
+        "data/staging", "DebidaDiligencia", str(ahora.year), f"{ahora.month:02d}", cliente.identificacion,
+    ))
+
+
 def procesar_cliente(page, cliente: Cliente) -> dict:
     resultados = {}
 
@@ -120,9 +132,37 @@ def procesar_cliente(page, cliente: Cliente) -> dict:
         try:
             resultados[nombre_paso] = funcion()
             print(f"[{cliente.identificacion}] OK - {nombre_paso}")
+            registrar_evento(
+                cliente_identificacion=cliente.identificacion,
+                cliente_nombre=cliente.nombre_para_mostrar,
+                usuario_proceso="bot-debida-diligencia",
+                resultado=ResultadoConsulta.EXITO,
+                sitio_web=nombre_paso,
+                ruta_evidencia=_calcular_ruta_evidencia(cliente),
+            )
         except Exception as e:
             resultados[nombre_paso] = {"error": str(e), "requiere_revision_manual": True}
             print(f"[{cliente.identificacion}] FALLÓ ({nombre_paso}): {type(e).__name__}: {e} - marcado para revisión manual")
+
+            # Clasificacion basica del tipo de fallo para el log - no es
+            # exhaustiva, pero distingue los casos mas comunes vistos en
+            # produccion (timeout de sitio vs. captcha vs. otro).
+            texto_error = f"{type(e).__name__}: {e}"
+            if "Timeout" in type(e).__name__:
+                resultado_log = ResultadoConsulta.TIMEOUT
+            elif "captcha" in texto_error.lower():
+                resultado_log = ResultadoConsulta.ERROR_CAPTCHA
+            else:
+                resultado_log = ResultadoConsulta.ERROR_DESCONOCIDO
+
+            registrar_evento(
+                cliente_identificacion=cliente.identificacion,
+                cliente_nombre=cliente.nombre_para_mostrar,
+                usuario_proceso="bot-debida-diligencia",
+                resultado=resultado_log,
+                sitio_web=nombre_paso,
+                detalle=texto_error,
+            )
 
     # --- 1. SRI (siempre el cliente mismo) ---
     _ejecutar("sri_ruc", lambda: ScraperSRI(context=page.context, url_base=URLS["sri_ruc"]).consultar_ruc(page, cliente))
@@ -179,7 +219,7 @@ def procesar_cliente(page, cliente: Cliente) -> dict:
     if cliente.tipo_persona == TipoPersona.JURIDICA:
         _ejecutar("scvs_companias", lambda: ScraperSCVSCompanias(context=page.context, url_base=URLS["scvs_companias"]).buscar_cliente(page, cliente))
     _ejecutar("scvs_personas", lambda: ScraperSCVSPersonas(context=page.context, url_base=URLS["scvs_personas"], url_base_sri=URLS["sri_ruc"]).buscar_cliente(page, cliente_para_persona))
-    
+
     # --- 7. Antecedentes Penales (persona: cliente o representante) ---
     _ejecutar("antecedentes_penales", lambda: ScraperAntecedentesPenales(context=page.context, url_base=URLS["antecedentes_penales"]).buscar_cliente(page, cliente_para_persona))
 
@@ -201,6 +241,7 @@ def _fallo(resultado) -> bool:
     con 'requiere_revision_manual'), no un resultado real del sitio."""
     return isinstance(resultado, dict) and resultado.get("requiere_revision_manual") is True
 
+
 def _calcular_sitios_a_revisar(resultados: dict) -> str:
     nombres = [
         _MAPEO_NOMBRES_LEGIBLES.get(sitio, sitio)
@@ -209,16 +250,8 @@ def _calcular_sitios_a_revisar(resultados: dict) -> str:
     ]
     return " / ".join(nombres) if nombres else "-"
 
-def _calcular_ruta_evidencia(cliente: Cliente) -> str:
-    """Misma logica de carpeta que ya usan capturar_evidencia()/
-    guardar_pdf_local() - carpeta raiz de este cliente, sin el
-    subdirectorio de cada sitio."""
-    ahora = datetime.now()
-    return os.path.abspath(os.path.join(
-        "data/staging", "DebidaDiligencia", str(ahora.year), f"{ahora.month:02d}", cliente.identificacion,
-    ))
 
-def escribir_resultados_excel(writer: LocalExcelWriter, cliente: Cliente, resultados: dict) -> None:
+def escribir_resultados_excel(writer: GraphAPIWriter, cliente: Cliente, resultados: dict) -> None:
     """
     Traduce el diccionario crudo de resultados (tal como lo arma
     procesar_cliente) a las llamadas escribir_* correspondientes. Un
@@ -238,9 +271,7 @@ def escribir_resultados_excel(writer: LocalExcelWriter, cliente: Cliente, result
             # el representante directo de la consulta SRI propia del
             # cliente - si la cadena tiene 2+ niveles, esos dos datos
             # son distintos (uno es una entidad intermedia, el otro la
-            # persona real). Confirmado con evidencia real: AMBACAR
-            # mostraba una empresa intermedia en H/I mientras el bloque
-            # SRI-RL (22-29) ya mostraba correctamente a la persona final.
+            # persona real).
             datos_sri_cliente["representante_legal_nombre"] = cadena["nombre"]
             datos_sri_cliente["representante_legal_identificacion"] = cadena["identificacion"]
         writer.escribir_sri_ruc(fila, datos_sri_cliente, datos_representante_legal=datos_rl)
@@ -369,10 +400,8 @@ def main():
                 estado = "REVISIÓN MANUAL" if _fallo(resultado) else "OK"
                 print(f"  {sitio}: {estado}")
 
-        writer.guardar()  # cierra la sesión de Graph API
         input("\nPresiona ENTER para cerrar...")
         browser.close()
-
 
 if __name__ == "__main__":
     main()
