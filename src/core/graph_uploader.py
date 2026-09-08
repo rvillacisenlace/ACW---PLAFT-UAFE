@@ -7,7 +7,7 @@ adicional, no un reemplazo.
 """
 import os
 import requests
-
+from datetime import datetime
 
 class GraphUploader:
     def __init__(self, cuenta_onedrive: str, writer, carpeta_base: str = "COMPARTIDO/CUMPLIMIENTO"):
@@ -44,14 +44,19 @@ class GraphUploader:
 
         return resp.json().get("webUrl", "")
 
-    def subir_carpeta_cliente(self, carpeta_local_cliente: str, identificacion_cliente: str, año: str, mes: str) -> list[str]:
+    def subir_carpeta_cliente(self, carpeta_local_cliente: str, identificacion_cliente: str, año: str, mes: str, modificados_desde=None) -> list[str]:
         """
-        Sube TODOS los archivos dentro de la carpeta local de evidencia
-        de un cliente, preservando la estructura completa de
-        subcarpetas tal cual está en disco (sitio/archivo.pdf, o
-        representante_legal_XXX/sitio/archivo.pdf si aplica) - no
-        depende de que quien llame conozca cuantos niveles de anidacion
-        hay, simplemente replica lo que encuentre.
+        Sube archivos dentro de la carpeta local de evidencia de un
+        cliente, preservando la estructura completa de subcarpetas tal
+        cual está en disco.
+
+        modificados_desde: datetime opcional - si se da, SOLO se suben
+        archivos cuya fecha de modificación sea posterior a ese momento
+        (evita re-subir todo el historial de un cliente en un reintento
+        parcial donde solo se re-ejecutó 1 de los 18 sitios - confirmado
+        con evidencia real 2026-09-07 que sin esto, se re-sube TODO cada
+        vez, no solo lo nuevo). Si es None, sube todo (comportamiento
+        original, para una corrida completa nueva).
 
         Devuelve la lista de nombres de archivo subidos exitosamente.
         Un archivo individual que falle se reporta por consola pero no
@@ -60,17 +65,21 @@ class GraphUploader:
         if not os.path.isdir(carpeta_local_cliente):
             return []
 
-        # Se recolectan todos los archivos primero para poder mostrar
-        # "X/Y" en el progreso, en vez de un conteo que crece sin saber
-        # el total esperado.
         archivos_a_subir = []
         for raiz, _, archivos in os.walk(carpeta_local_cliente):
             for nombre_archivo in archivos:
                 ruta_local = os.path.join(raiz, nombre_archivo)
+                if modificados_desde is not None:
+                    mtime = datetime.fromtimestamp(os.path.getmtime(ruta_local))
+                    if mtime < modificados_desde:
+                        continue
                 ruta_relativa = os.path.relpath(ruta_local, carpeta_local_cliente).replace(os.sep, "/")
                 archivos_a_subir.append((ruta_local, ruta_relativa))
 
         total = len(archivos_a_subir)
+        if total == 0:
+            return []
+
         subidos = []
         for i, (ruta_local, ruta_relativa) in enumerate(archivos_a_subir, start=1):
             ruta_onedrive = "/".join([

@@ -443,6 +443,7 @@ def main():
                 break
 
             incrementar_contador_hoy()
+            momento_inicio_cliente = datetime.now()
 
             sitios_a_ejecutar = _parsear_sitios_a_reintentar(cliente.sitios_a_revisar_texto)
             if sitios_a_ejecutar is not None:
@@ -464,7 +465,14 @@ def main():
 
                 ahora = datetime.now()
                 carpeta_cliente = os.path.join("data/staging/DebidaDiligencia", str(ahora.year), f"{ahora.month:02d}", cliente.identificacion)
-                subidos = uploader.subir_carpeta_cliente(carpeta_cliente, cliente.identificacion, str(ahora.year), f"{ahora.month:02d}")
+                # En reintento parcial, solo sube lo generado DESDE que
+                # arrancó el procesamiento de este cliente en esta
+                # corrida - evita re-subir el historial completo cuando
+                # solo se re-ejecutó 1 de los 18 sitios.
+                subidos = uploader.subir_carpeta_cliente(
+                    carpeta_cliente, cliente.identificacion, str(ahora.year), f"{ahora.month:02d}",
+                    modificados_desde=(momento_inicio_cliente if sitios_a_ejecutar is not None else None),
+                )
                 print(f"[{cliente.identificacion}] {len(subidos)} archivo(s) de evidencia subidos a OneDrive.")
 
                 if subidos:
