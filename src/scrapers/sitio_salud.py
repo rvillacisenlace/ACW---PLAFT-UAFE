@@ -8,7 +8,7 @@ RUC. Para clientes Jurídica, se requiere la cédula del representante
 legal - funcionalidad pendiente (cadena de representantes, pausada).
 """
 from playwright.sync_api import Page
-
+from src.scrapers.base_scraper import BaseScraper, ScraperError, derivar_cedula_y_ruc
 from src.scrapers.base_scraper import BaseScraper, ScraperError
 from src.core.models import Cliente, ResultadoConsulta, Salud, TipoPersona
 from src.documentos.almacenamiento import guardar_pdf_local
@@ -82,7 +82,14 @@ class ScraperSalud(BaseScraper):
 
         # Paso 2: ingresar cédula, esperar a que el botón Consultar se
         # habilite (confirma que el formulario validó el dato ingresado).
-        page.fill("#cedula", cliente.identificacion)
+        # Este campo SOLO acepta cedula de 10 digitos - se usa
+        # derivar_cedula_y_ruc() para garantizar 10 digitos sin importar
+        # si cliente.identificacion trae 10 o 13 (mismo bug de fondo
+        # encontrado hoy en Sentenciados/Fiscalia/Funcion Judicial:
+        # a veces la columna del Excel trae el RUC completo incluso
+        # para un Natural).
+        cedula_real, _ = derivar_cedula_y_ruc(cliente)
+        page.fill("#cedula", cedula_real)
         boton_consultar = page.locator("button:has-text('Consultar')")
         boton_consultar.wait_for(state="visible", timeout=10000)
         for _ in range(20):  # hasta 6 segundos esperando habilitación

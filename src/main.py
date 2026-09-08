@@ -6,6 +6,12 @@ corre los 18 sitios para cada uno, escribe los resultados de vuelta al
 Excel, sube la evidencia a OneDrive, y registra cada intento en el log
 de auditoría (data/logs/auditoria_YYYY-MM-DD.jsonl).
 
+REINTENTO PARCIAL (2026-09-03, solicitado por Cumplimiento): si un
+cliente ya tiene ESTADO="Completado con pendientes", en la siguiente
+corrida SOLO se re-ejecutan los sitios que fallaron antes (leídos de la
+columna "SITIOS A REVISAR"), no los 18 completos - los sitios que ya
+salieron bien quedan intactos en el Excel, sin re-escribirse.
+
 Usa channel="chrome" en TODO el navegador (no solo Salud) para
 simplificar - Chrome real funciona igual de bien para el resto de
 sitios, evita manejar 2 instancias de navegador para esta demo.
@@ -48,10 +54,6 @@ from src.scrapers.cadena_representante import resolver_representante_legal
 
 RUTA_EXCEL_LOCAL = "templates/Matriz Revisión Clientes.xlsx"
 
-# Todas las URLs vienen de la Hoja de Parametrizacion, sin fallback
-# hardcodeado (mismo criterio que el proyecto hermano): si falta algun
-# parametro, el programa se detiene con un error claro en vez de seguir
-# corriendo en silencio contra una URL vieja/desactualizada.
 _writer_parametros = GraphAPIWriter(
     cuenta_onedrive=os.getenv("CUENTA_ONEDRIVE", "unidadq@enlace.ec"),
     drive_id=os.getenv("GRAPH_DRIVE_ID"),
@@ -100,11 +102,24 @@ _MAPEO_NOMBRES_LEGIBLES = {
     "iess": "IESS",
     "scvs_companias": "SCVS Compañías",
     "scvs_personas": "SCVS Personas",
+    "beneficiarios_finales": "Beneficiarios Finales",
     "antecedentes_penales": "Antecedentes Penales",
     "sentenciados": "Sentenciados",
     "funcion_judicial": "Función Judicial",
     "fiscalia": "Fiscalía",
     "contraloria": "Contraloría",
+}
+
+# .upper() en ambos lados - "_escribir_valor_con_estilo" convierte TODO
+# a mayusculas antes de guardarlo en el Excel, asi que lo que se lee de
+# vuelta de "SITIOS A REVISAR" siempre viene en mayusculas
+# ("SENTENCIADOS", no "Sentenciados") - sin esto, el reintento parcial
+# nunca reconoce ningun nombre de sitio correctamente.
+_MAPEO_NOMBRES_INVERSO = {nombre.upper(): clave for clave, nombre in _MAPEO_NOMBRES_LEGIBLES.items()}
+
+_SITIOS_QUE_NECESITAN_PERSONA_RESUELTA = {
+    "salud", "iess", "scvs_personas", "antecedentes_penales",
+    "contraloria", "sercop_certificados", "scvs_companias", "beneficiarios_finales",
 }
 
 _faltantes = [param for param in _MAPEO_URLS.values() if not _parametros.get(param)]
@@ -116,68 +131,115 @@ URLS = {clave: _parametros[param] for clave, param in _MAPEO_URLS.items()}
 
 
 def _calcular_ruta_evidencia(cliente: Cliente) -> str:
-    """Misma logica de carpeta que ya usan capturar_evidencia()/
-    guardar_pdf_local() - carpeta raiz de este cliente, sin el
-    subdirectorio de cada sitio."""
     ahora = datetime.now()
     return os.path.abspath(os.path.join(
         "data/staging", "DebidaDiligencia", str(ahora.year), f"{ahora.month:02d}", cliente.identificacion,
     ))
 
 
-def procesar_cliente(page, cliente: Cliente) -> dict:
+def _parsear_sitios_a_reintentar(texto: str) -> set | None:
+    texto = (texto or "").strip()
+    if not texto or texto == "-":
+        return None
+
+    claves = set()
+    for parte in texto.split(" / "):
+        nombre_legible = parte.replace(" (SITIO FUERA DE SERVICIO)", "").strip()
+        clave = _MAPEO_NOMBRES_INVERSO.get(nombre_legible.upper())
+        if clave:
+            claves.add(clave)
+        else:
+            print(f"    [advertencia] no se pudo reconocer '{nombre_legible}' de SITIOS A REVISAR - se ignora esa entrada")
+
+    return claves if claves else None
+
+
+def procesar_cliente(page, cliente: Cliente, sitios_a_ejecutar=None) -> dict:
     resultados = {}
 
-    def _ejecutar(nombre_paso, funcion):
-        try:
-            resultados[nombre_paso] = funcion()
-            print(f"[{cliente.identificacion}] OK - {nombre_paso}")
-            registrar_evento(
-                cliente_identificacion=cliente.identificacion,
-                cliente_nombre=cliente.nombre_para_mostrar,
-                usuario_proceso="bot-debida-diligencia",
-                resultado=ResultadoConsulta.EXITO,
-                sitio_web=nombre_paso,
-                ruta_evidencia=_calcular_ruta_evidencia(cliente),
-            )
-        except Exception as e:
-            resultados[nombre_paso] = {"error": str(e), "requiere_revision_manual": True}
-            print(f"[{cliente.identificacion}] FALLÓ ({nombre_paso}): {type(e).__name__}: {e} - marcado para revisión manual")
+    def _ejecutar(nombre_paso, funcion, intentos_maximos=2):
+        """
+        Reintenta automáticamente UNA vez (2 intentos totales) cuando el
+        fallo es especificamente un TimeoutError - confirmado que la
+        mayoria de sitios gubernamentales de este proyecto son
+        intermitentes, no rotos, y un segundo intento desde cero
+        (la funcion vuelve a navegar/buscar completo) suele resolverlo.
+        Otros tipos de error (captcha, elemento no encontrado, etc.) NO
+        se reintentan aqui - esos ya tienen su propio manejo especifico
+        en el scraper que corresponda (ej. reintento-con-recarga de
+        Contraloria/Antecedentes Penales), o simplemente no se resuelven
+        solos con un segundo intento identico.
+        """
+        if sitios_a_ejecutar is not None and nombre_paso not in sitios_a_ejecutar:
+            return
 
-            # Clasificacion basica del tipo de fallo para el log - no es
-            # exhaustiva, pero distingue los casos mas comunes vistos en
-            # produccion (timeout de sitio vs. captcha vs. otro).
-            texto_error = f"{type(e).__name__}: {e}"
-            if "Timeout" in type(e).__name__:
-                resultado_log = ResultadoConsulta.TIMEOUT
-            elif "captcha" in texto_error.lower():
-                resultado_log = ResultadoConsulta.ERROR_CAPTCHA
-            else:
-                resultado_log = ResultadoConsulta.ERROR_DESCONOCIDO
+        ultimo_error = None
+        for intento in range(1, intentos_maximos + 1):
+            try:
+                resultados[nombre_paso] = funcion()
+                sufijo = f" (tras {intento} intentos)" if intento > 1 else ""
+                print(f"[{cliente.identificacion}] OK - {nombre_paso}{sufijo}")
+                registrar_evento(
+                    cliente_identificacion=cliente.identificacion,
+                    cliente_nombre=cliente.nombre_para_mostrar,
+                    usuario_proceso="bot-debida-diligencia",
+                    resultado=ResultadoConsulta.EXITO,
+                    sitio_web=nombre_paso,
+                    ruta_evidencia=_calcular_ruta_evidencia(cliente),
+                )
+                return
+            except Exception as e:
+                ultimo_error = e
+                es_timeout = "Timeout" in type(e).__name__
+                if es_timeout and intento < intentos_maximos:
+                    print(f"[{cliente.identificacion}] {nombre_paso} - Timeout en intento {intento}/{intentos_maximos}, reintentando...")
+                    continue
+                break
 
-            registrar_evento(
-                cliente_identificacion=cliente.identificacion,
-                cliente_nombre=cliente.nombre_para_mostrar,
-                usuario_proceso="bot-debida-diligencia",
-                resultado=resultado_log,
-                sitio_web=nombre_paso,
-                detalle=texto_error,
-            )
+        resultados[nombre_paso] = {"error": str(ultimo_error), "requiere_revision_manual": True}
+        print(f"[{cliente.identificacion}] FALLÓ ({nombre_paso}): {type(ultimo_error).__name__}: {ultimo_error} - marcado para revisión manual")
 
-    # --- 1. SRI (siempre el cliente mismo) ---
+        texto_error = f"{type(ultimo_error).__name__}: {ultimo_error}"
+        if "Timeout" in type(ultimo_error).__name__:
+            resultado_log = ResultadoConsulta.TIMEOUT
+        elif "captcha" in texto_error.lower():
+            resultado_log = ResultadoConsulta.ERROR_CAPTCHA
+        else:
+            resultado_log = ResultadoConsulta.ERROR_DESCONOCIDO
+
+        registrar_evento(
+            cliente_identificacion=cliente.identificacion,
+            cliente_nombre=cliente.nombre_para_mostrar,
+            usuario_proceso="bot-debida-diligencia",
+            resultado=resultado_log,
+            sitio_web=nombre_paso,
+            detalle=texto_error,
+        )
+
     _ejecutar("sri_ruc", lambda: ScraperSRI(context=page.context, url_base=URLS["sri_ruc"]).consultar_ruc(page, cliente))
     _ejecutar("sri_deudas", lambda: ScraperSRIDeudas(context=page.context, url_base=URLS["sri_deudas"]).consultar_deudas(page, cliente))
     _ejecutar("sri_estado_tributario", lambda: ScraperSRIEstadoTributario(context=page.context, url_base=URLS["sri_estado_tributario"]).consultar_estado_tributario(page, cliente))
 
-    # --- Resolver representante legal SI es Jurídica (necesario antes de
-    # Salud/IESS/Contraloría/SERCOP-certificados, que vienen después) ---
     cliente_para_persona = cliente
     ruc_representante = ""
-    if cliente.tipo_persona == TipoPersona.JURIDICA:
+    necesita_representante_legal = (
+        cliente.tipo_persona == TipoPersona.JURIDICA
+        and (
+            sitios_a_ejecutar is None
+            or "cadena_representante_legal" in sitios_a_ejecutar
+            or bool(sitios_a_ejecutar & _SITIOS_QUE_NECESITAN_PERSONA_RESUELTA)
+        )
+    )
+    if necesita_representante_legal:
         scraper_sri_cadena = ScraperSRI(context=page.context, url_base=URLS["sri_ruc"])
         try:
             cadena = resolver_representante_legal(page, scraper_sri_cadena, cliente)
-            resultados["cadena_representante_legal"] = cadena
+            if sitios_a_ejecutar is None or "cadena_representante_legal" in sitios_a_ejecutar:
+                resultados["cadena_representante_legal"] = cadena
+                if not cadena["persona_encontrada"]:
+                    resultados["cadena_representante_legal"]["requiere_revision_manual"] = True
+                    print(f"[{cliente.identificacion}] ADVERTENCIA: no se resolvió representante legal - {cadena['mensaje']} - marcado para revisión manual")
+
             if cadena["persona_encontrada"]:
                 ruc_representante = cadena["identificacion"]
                 cliente_para_persona = Cliente(
@@ -188,69 +250,46 @@ def procesar_cliente(page, cliente: Cliente) -> dict:
                     subcarpeta_evidencia=f"representante_legal_{cadena['identificacion']}",
                 )
                 print(f"[{cliente.identificacion}] Representante legal resuelto: {cadena['nombre']} ({cadena['identificacion']})")
-            else:
-                # No resolver el RL es un caso real de revision manual -
-                # sin esto, quedaba marcado "OK" en el resumen/Excel aunque
-                # nunca se pudo verificar quien es el representante legal.
-                resultados["cadena_representante_legal"]["requiere_revision_manual"] = True
-                print(f"[{cliente.identificacion}] ADVERTENCIA: no se resolvió representante legal - {cadena['mensaje']} - marcado para revisión manual")
         except Exception as e:
-            resultados["cadena_representante_legal"] = {"error": str(e), "requiere_revision_manual": True}
+            if sitios_a_ejecutar is None or "cadena_representante_legal" in sitios_a_ejecutar:
+                resultados["cadena_representante_legal"] = {"error": str(e), "requiere_revision_manual": True}
             print(f"[{cliente.identificacion}] FALLÓ cadena de representante legal: {e}")
 
-    # --- 2. Municipios (siempre el cliente mismo) ---
     _ejecutar("municipio_quito", lambda: ScraperMunicipioQuito(context=page.context, url_base=URLS["municipio_quito"]).buscar_cliente(page, cliente))
     _ejecutar("municipio_cuenca", lambda: ScraperMunicipioCuenca(context=page.context, url_base=URLS["municipio_cuenca"]).buscar_cliente(page, cliente))
     _ejecutar("municipio_ambato", lambda: ScraperMunicipioAmbato(context=page.context, url_base=URLS["municipio_ambato"]).buscar_cliente(page, cliente))
     _ejecutar("municipio_esmeraldas", lambda: ScraperMunicipioEsmeraldas(context=page.context, url_base=URLS["municipio_esmeraldas"]).buscar_cliente(page, cliente))
     _ejecutar("municipio_manta", lambda: ScraperMunicipioManta(context=page.context, url_base=URLS["municipio_manta"]).buscar_cliente(page, cliente))
 
-    # --- 3. SERCOP / INCOP ---
     _ejecutar("sercop_proveedor", lambda: ScraperSERCOPProveedor(context=page.context, url_base=URLS["sercop_proveedor"]).buscar_cliente(page, cliente))
     _ejecutar("sercop_certificados", lambda: ScraperSERCOPCertificados(context=page.context, url_base=URLS["sercop_certificados"]).buscar_cliente(page, cliente, ruc_representante_legal=ruc_representante))
 
-    # --- 4. Salud (persona: cliente o representante) ---
     _ejecutar("salud", lambda: ScraperSalud(context=page.context, url_base=URLS["salud"]).buscar_cliente(page, cliente_para_persona))
 
-    # --- 5. IESS (persona: cliente o representante) ---
     _ejecutar("iess", lambda: ScraperIESS(context=page.context, url_base=URLS["iess"]).buscar_cliente(page, cliente_para_persona))
 
-    # --- 6. SCVS - Compañías (solo Jurídica) y Personas (persona: cliente o representante) ---
     if cliente.tipo_persona == TipoPersona.JURIDICA:
         _ejecutar("scvs_companias", lambda: ScraperSCVSCompanias(context=page.context, url_base=URLS["scvs_companias"]).buscar_cliente(page, cliente))
+        _ejecutar("beneficiarios_finales", lambda: ScraperSCVSCompanias(context=page.context, url_base=URLS["scvs_companias"]).consultar_beneficiarios_finales(page, cliente))
     _ejecutar("scvs_personas", lambda: ScraperSCVSPersonas(context=page.context, url_base=URLS["scvs_personas"], url_base_sri=URLS["sri_ruc"]).buscar_cliente(page, cliente_para_persona))
 
-    # --- 7. Antecedentes Penales (persona: cliente o representante) ---
     _ejecutar("antecedentes_penales", lambda: ScraperAntecedentesPenales(context=page.context, url_base=URLS["antecedentes_penales"]).buscar_cliente(page, cliente_para_persona))
 
-    # --- 8. Sentenciados ---
     _ejecutar("sentenciados", lambda: ScraperSentenciados(context=page.context, url_base=URLS["sentenciados"]).buscar_cliente(page, cliente))
 
-    # --- 9. Función Judicial (incluye Fiscalía dentro del mismo Sitio 8) ---
     _ejecutar("funcion_judicial", lambda: ScraperFuncionJudicial(context=page.context, url_base=URLS["funcion_judicial"]).buscar_y_procesar_cliente(page, cliente))
     _ejecutar("fiscalia", lambda: ScraperFiscalia(context=page.context, url_base=URLS["fiscalia_noticias"]).buscar_cliente(page, cliente))
 
-    # --- 10. Contraloría (persona: cliente o representante) ---
     _ejecutar("contraloria", lambda: ScraperContraloria(context=page.context, url_base=URLS["contraloria"]).buscar_cliente(page, cliente_para_persona))
 
     return resultados
 
 
 def _fallo(resultado) -> bool:
-    """True si este resultado es un error capturado por _ejecutar (dict
-    con 'requiere_revision_manual'), no un resultado real del sitio."""
     return isinstance(resultado, dict) and resultado.get("requiere_revision_manual") is True
 
 
 def _es_sitio_fuera_de_servicio(texto_error: str) -> bool:
-    """
-    Distingue un fallo de NAVEGACION (el sitio no cargo/no respondio -
-    Page.goto fallido, conexion rechazada/reseteada) de otros tipos de
-    fallo (elemento no encontrado, captcha, timeout de interaccion) -
-    solicitado por Cumplimiento (2026-09-03): estos casos deben quedar
-    etiquetados explicitamente como "Sitio Fuera de Servicio", no como
-    un fallo generico.
-    """
     señales_sitio_caido = [
         "Page.goto", "net::ERR_", "ERR_CONNECTION", "ERR_NAME_NOT_RESOLVED",
         "ERR_TIMED_OUT", "ERR_INTERNET_DISCONNECTED", "ERR_ADDRESS_UNREACHABLE",
@@ -273,41 +312,26 @@ def _calcular_sitios_a_revisar(resultados: dict) -> str:
 
 
 def escribir_resultados_excel(writer: GraphAPIWriter, cliente: Cliente, resultados: dict) -> None:
-    """
-    Traduce el diccionario crudo de resultados (tal como lo arma
-    procesar_cliente) a las llamadas escribir_* correspondientes. Un
-    sitio que falló (ver _fallo) se salta - no hay datos reales que
-    escribir para ese sitio, y el ESTADO final ya lo refleja.
-    """
     fila = cliente.fila_excel
 
-    if not _fallo(resultados.get("sri_ruc")):
-        datos_sri_cliente = dict(resultados["sri_ruc"])  # copia, no mutar el original
+    if "sri_ruc" in resultados and not _fallo(resultados["sri_ruc"]):
+        datos_sri_cliente = dict(resultados["sri_ruc"])
         datos_rl = None
         cadena = resultados.get("cadena_representante_legal")
         if isinstance(cadena, dict) and cadena.get("persona_encontrada"):
             datos_rl = cadena.get("datos_sri_persona") or None
-            # Las columnas H/I ("Representante Legal"/"ID Representante
-            # Legal") deben reflejar el RESULTADO FINAL de la cadena, no
-            # el representante directo de la consulta SRI propia del
-            # cliente - si la cadena tiene 2+ niveles, esos dos datos
-            # son distintos (uno es una entidad intermedia, el otro la
-            # persona real).
             datos_sri_cliente["representante_legal_nombre"] = cadena["nombre"]
             datos_sri_cliente["representante_legal_identificacion"] = cadena["identificacion"]
         writer.escribir_sri_ruc(fila, datos_sri_cliente, datos_representante_legal=datos_rl)
 
-    if not _fallo(resultados.get("sri_deudas")):
+    if "sri_deudas" in resultados and not _fallo(resultados["sri_deudas"]):
         deuda = resultados["sri_deudas"]
         writer.escribir_sri_deudas(fila, deuda.tiene_deuda_firme, deuda.valor_deuda_firme)
 
-    if not _fallo(resultados.get("sri_estado_tributario")):
+    if "sri_estado_tributario" in resultados and not _fallo(resultados["sri_estado_tributario"]):
         estado_trib = resultados["sri_estado_tributario"]
         writer.escribir_sri_estado_tributario(fila, estado_trib.resultado, estado_trib.obligaciones_pendientes)
 
-    # Municipios: se consolidan los 5 en una sola llamada. Si alguno
-    # falló individualmente, se omite del dict (escribir_municipios ya
-    # maneja bien un dict con menos de 5 entradas).
     mapeo_municipios = {
         "Quito": "municipio_quito", "Cuenca": "municipio_cuenca", "Ambato": "municipio_ambato",
         "Esmeraldas": "municipio_esmeraldas", "Manta": "municipio_manta",
@@ -319,56 +343,68 @@ def escribir_resultados_excel(writer: GraphAPIWriter, cliente: Cliente, resultad
     if resultados_municipios:
         writer.escribir_municipios(fila, resultados_municipios)
 
-    if not _fallo(resultados.get("sercop_proveedor")):
+    if "sercop_proveedor" in resultados and not _fallo(resultados["sercop_proveedor"]):
         writer.escribir_sercop_proveedor(fila, resultados["sercop_proveedor"]["estado"])
 
-    if not _fallo(resultados.get("sercop_certificados")):
+    if "sercop_certificados" in resultados and not _fallo(resultados["sercop_certificados"]):
         writer.escribir_sercop_certificados(fila, resultados["sercop_certificados"])
 
-    if not _fallo(resultados.get("salud")):
+    if "salud" in resultados and not _fallo(resultados["salud"]):
         salud = resultados["salud"]
         writer.escribir_salud(fila, salud.situacion_laboral, salud.tipo_afiliacion)
 
-    if not _fallo(resultados.get("iess")):
+    if "iess" in resultados and not _fallo(resultados["iess"]):
         iess = resultados["iess"]
         writer.escribir_iess(fila, iess.get("iess", ""), iess.get("deuda_obligaciones", ""))
 
     if "scvs_companias" in resultados and not _fallo(resultados["scvs_companias"]):
         scvs = resultados["scvs_companias"]
         writer.escribir_scvs_companias(fila, scvs.registrado, scvs.cumplimiento_obligaciones)
+    elif cliente.tipo_persona == TipoPersona.NATURAL:
+        # Natural nunca ejecuta este sitio (SCVS Companias solo aplica a
+        # Juridica) - se escribe "-" en gris explicitamente, mismo
+        # criterio que Beneficiarios Finales.
+        writer.escribir_scvs_companias(fila, registrado=False)
 
-    if not _fallo(resultados.get("scvs_personas")):
+    if "beneficiarios_finales" in resultados and not _fallo(resultados["beneficiarios_finales"]):
+        writer.escribir_beneficiarios_finales(fila, resultados["beneficiarios_finales"])
+    elif cliente.tipo_persona == TipoPersona.NATURAL:
+        # Natural nunca ejecuta este sitio (Beneficiarios Finales solo
+        # aplica a Juridica) - se escribe "-" en gris explicitamente en
+        # vez de dejar las celdas sin tocar, mismo criterio que el
+        # resto de bloques condicionales del Excel.
+        writer.escribir_beneficiarios_finales(fila, [])
+
+    if "scvs_personas" in resultados and not _fallo(resultados["scvs_personas"]):
         scvs_personas = resultados["scvs_personas"]
-        # nombre de quien se busco en SCVS Personas - el cliente mismo
-        # si es Natural, o el representante legal si es Juridica (mismo
-        # criterio que determina "cliente_para_persona" en procesar_cliente).
         cadena = resultados.get("cadena_representante_legal")
         if isinstance(cadena, dict) and cadena.get("persona_encontrada"):
             nombre_persona_relacionada = cadena["nombre"]
         else:
             nombre_persona_relacionada = cliente.nombres_completos
         writer.escribir_scvs_personas(fila, scvs_personas, nombre_persona_relacionada)
+        writer.escribir_empresas_extranjeras(fila, scvs_personas.get("empresas_extranjeras", []), nombre_persona_relacionada)
 
-    if not _fallo(resultados.get("antecedentes_penales")):
+    if "antecedentes_penales" in resultados and not _fallo(resultados["antecedentes_penales"]):
         ap = resultados["antecedentes_penales"]
         posee_bool = str(ap.posee_antecedentes).strip().upper() == "SI"
         writer.escribir_antecedentes_penales(fila, posee_bool)
 
-    if not _fallo(resultados.get("sentenciados")):
+    if "sentenciados" in resultados and not _fallo(resultados["sentenciados"]):
         lista_sentenciados, total_sentenciados = resultados["sentenciados"]
         writer.escribir_sentenciados(fila, total_sentenciados, lista_sentenciados[:3])
 
-    if not _fallo(resultados.get("funcion_judicial")):
+    if "funcion_judicial" in resultados and not _fallo(resultados["funcion_judicial"]):
         procesos, total_procesos, tematica_general = resultados["funcion_judicial"]
         writer.escribir_funcion_judicial(fila, procesos, total_procesos, tematica_general)
 
-    if not _fallo(resultados.get("fiscalia")):
+    if "fiscalia" in resultados and not _fallo(resultados["fiscalia"]):
         denuncias = resultados["fiscalia"]
         scraper_fiscalia_temp = ScraperFiscalia(context=None, url_base="")
         resumen_fiscalia = scraper_fiscalia_temp.resumen_general_por_denuncia(denuncias)
         writer.escribir_fiscalia_resumen_general(fila, resumen_fiscalia)
 
-    if not _fallo(resultados.get("contraloria")):
+    if "contraloria" in resultados and not _fallo(resultados["contraloria"]):
         declaraciones = resultados["contraloria"]
         scraper_contraloria_temp = ScraperContraloria(context=None, url_base="")
         resumen_detallado = scraper_contraloria_temp.resumir_declaraciones(declaraciones)
@@ -378,11 +414,13 @@ def escribir_resultados_excel(writer: GraphAPIWriter, cliente: Cliente, resultad
 
     writer.escribir_estado_final(fila, resultados)
     writer.escribir_sitios_a_revisar(fila, _calcular_sitios_a_revisar(resultados))
-    writer.escribir_ruta_evidencia(fila, _calcular_ruta_evidencia(cliente))
+    # NOTA: escribir_ruta_evidencia() se llama DESPUES de esto, en main(),
+    # una vez que la evidencia ya se subio a OneDrive - necesita el link
+    # real (webUrl) que solo existe tras la subida, no la ruta local.
 
 
 def main():
-    writer = _writer_parametros  # reutiliza la sesión de Graph ya abierta arriba
+    writer = _writer_parametros
     clientes = writer.leer_clientes_pendientes()
     print(f"Se encontraron {len(clientes)} clientes pendientes en el Excel.\n")
 
@@ -405,22 +443,38 @@ def main():
                 break
 
             incrementar_contador_hoy()
-            print(f"\n{'='*70}")
-            print(f"PROCESANDO CLIENTE: {cliente.identificacion} - {cliente.nombre_para_mostrar} (consulta {obtener_contador_hoy()}/100 hoy)")
-            print(f"{'='*70}\n")
 
-            resultados = procesar_cliente(page, cliente)
+            sitios_a_ejecutar = _parsear_sitios_a_reintentar(cliente.sitios_a_revisar_texto)
+            if sitios_a_ejecutar is not None:
+                nombres_legibles = [_MAPEO_NOMBRES_LEGIBLES.get(s, s) for s in sitios_a_ejecutar]
+                print(f"\n{'='*70}")
+                print(f"REINTENTO PARCIAL: {cliente.identificacion} - {cliente.nombre_para_mostrar} (consulta {obtener_contador_hoy()}/100 hoy)")
+                print(f"Solo se re-ejecutan: {', '.join(nombres_legibles)}")
+                print(f"{'='*70}\n")
+            else:
+                print(f"\n{'='*70}")
+                print(f"PROCESANDO CLIENTE: {cliente.identificacion} - {cliente.nombre_para_mostrar} (consulta {obtener_contador_hoy()}/100 hoy)")
+                print(f"{'='*70}\n")
+
+            resultados = procesar_cliente(page, cliente, sitios_a_ejecutar=sitios_a_ejecutar)
             resumen_final[cliente.identificacion] = resultados
 
             try:
                 escribir_resultados_excel(writer, cliente, resultados)
-                writer.guardar()
-                print(f"[{cliente.identificacion}] Excel actualizado y guardado.")
 
                 ahora = datetime.now()
                 carpeta_cliente = os.path.join("data/staging/DebidaDiligencia", str(ahora.year), f"{ahora.month:02d}", cliente.identificacion)
                 subidos = uploader.subir_carpeta_cliente(carpeta_cliente, cliente.identificacion, str(ahora.year), f"{ahora.month:02d}")
                 print(f"[{cliente.identificacion}] {len(subidos)} archivo(s) de evidencia subidos a OneDrive.")
+
+                if subidos:
+                    link_carpeta = uploader.obtener_link_carpeta_cliente(cliente.identificacion, str(ahora.year), f"{ahora.month:02d}")
+                    writer.escribir_ruta_evidencia(cliente.fila_excel, link_carpeta or _calcular_ruta_evidencia(cliente))
+                else:
+                    writer.escribir_ruta_evidencia(cliente.fila_excel, _calcular_ruta_evidencia(cliente))
+
+                writer.guardar()
+                print(f"[{cliente.identificacion}] Excel actualizado y guardado.")
             except Exception as e:
                 print(f"[{cliente.identificacion}] FALLÓ al escribir en Excel o subir evidencia: {type(e).__name__}: {e}")
 
@@ -435,6 +489,7 @@ def main():
 
         input("\nPresiona ENTER para cerrar...")
         browser.close()
+
 
 if __name__ == "__main__":
     main()

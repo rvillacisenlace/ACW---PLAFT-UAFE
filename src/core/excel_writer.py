@@ -10,6 +10,14 @@ from abc import ABC, abstractmethod
 from openpyxl import load_workbook
 from openpyxl.styles import Font, Alignment, PatternFill
 
+import truststore
+truststore.inject_into_ssl()
+
+import os
+import msal
+import requests
+
+
 class ExcelWriter(ABC):
     @abstractmethod
     def actualizar_estado_cliente(self, fila_excel: int, estado: str, detalle: str = "") -> None:
@@ -74,16 +82,13 @@ class LocalExcelWriter(ExcelWriter):
     COL_CONTRALORIA_TIEMPO = 136
     COL_CONTRALORIA_ULTIMO_ANIO = 137
 
-    # Bloque SCVS Personas (Z-BK). "RUC", "Cargo", "Fecha de Constitucion",
-    # "Observaciones" se repiten en muchas otras partes de la hoja -
-    # indices directos, mismo criterio que los demas bloques.
-    COL_SCVS_PERSONAS_TOTAL_PRESIDENTE_RL = 45  # AS
-    COL_SCVS_PERSONAS_TOTAL_ACCIONISTA = 46  # AT
+    COL_SCVS_PERSONAS_TOTAL_PRESIDENTE_RL = 45
+    COL_SCVS_PERSONAS_TOTAL_ACCIONISTA = 46
     COL_SCVS_PERSONAS_SLOTS = [
-        (47, 48, 49, 50, 51, 52, 53, 54, 55),  # AU-BC
-        (56, 57, 58, 59, 60, 61, 62, 63, 64),  # BD-BL
-        (65, 66, 67, 68, 69, 70, 71, 72, 73),  # BM-BU
-        (74, 75, 76, 77, 78, 79, 80, 81, 82),  # BV-CD
+        (47, 48, 49, 50, 51, 52, 53, 54, 55),
+        (56, 57, 58, 59, 60, 61, 62, 63, 64),
+        (65, 66, 67, 68, 69, 70, 71, 72, 73),
+        (74, 75, 76, 77, 78, 79, 80, 81, 82),
     ]
 
     COL_SENTENCIADOS_TOTAL = 143
@@ -99,6 +104,20 @@ class LocalExcelWriter(ExcelWriter):
         (158, 159, 160, 161, 162),
         (163, 164, 165, 166, 167),
         (168, 169, 170, 171, 172),
+    ]
+
+    COL_EMPRESAS_EXTRANJERAS_SLOTS = [
+        (116, 117, 118, 119, 120),
+        (121, 122, 123, 124, 125),
+        (126, 127, 128, 129, 130),
+    ]
+
+    COL_BENEFICIARIOS_FINALES_TOTAL = 83
+    COL_BENEFICIARIOS_FINALES_SLOTS = [
+        (84, 85, 86, 87, 88, 89, 90, 91),
+        (92, 93, 94, 95, 96, 97, 98, 99),
+        (100, 101, 102, 103, 104, 105, 106, 107),
+        (108, 109, 110, 111, 112, 113, 114, 115),
     ]
 
     def __init__(self, ruta_excel: str, nombre_hoja: str = "Revision"):
@@ -146,6 +165,9 @@ class LocalExcelWriter(ExcelWriter):
         col_nombres = self._col("Apellidos Y Nombres (P.Natural / P.Juridica)")
         col_razon = self._col("Razon Social (Empresa)")
         col_estado = self._col("ESTADO")
+        col_sitios_revisar = self._col("SITIOS A REVISAR")
+        col_rl_nombre = self._col("Representante Legal")
+        col_rl_id = self._col("ID Representante Legal")
 
         clientes = []
         for fila in range(self.FILA_INICIO_DATOS, self.hoja.max_row + 1):
@@ -160,6 +182,9 @@ class LocalExcelWriter(ExcelWriter):
             nombres = self.hoja.cell(row=fila, column=col_nombres).value
             razon = self.hoja.cell(row=fila, column=col_razon).value
             tipo = TipoPersona.NATURAL if nombres else TipoPersona.JURIDICA
+            sitios_revisar = self.hoja.cell(row=fila, column=col_sitios_revisar).value
+            rl_nombre = self.hoja.cell(row=fila, column=col_rl_nombre).value
+            rl_id = self.hoja.cell(row=fila, column=col_rl_id).value
 
             clientes.append(Cliente(
                 identificacion=str(identificacion).strip(),
@@ -167,6 +192,9 @@ class LocalExcelWriter(ExcelWriter):
                 nombres_completos=(str(nombres).strip() if nombres else ""),
                 razon_social=(str(razon).strip() if razon else ""),
                 fila_excel=fila,
+                sitios_a_revisar_texto=(str(sitios_revisar).strip() if sitios_revisar else ""),
+                representante_legal_nombre_guardado=(str(rl_nombre).strip() if rl_nombre else ""),
+                representante_legal_identificacion_guardada=(str(rl_id).strip() if rl_id else ""),
             ))
 
         return clientes
@@ -303,13 +331,6 @@ class LocalExcelWriter(ExcelWriter):
         self._escribir_valor_con_estilo(fila_excel, self.COL_CONTRALORIA_ULTIMO_ANIO, resumen.get("ultimo_anio_en_cargo", "-"))
 
     def escribir_scvs_personas(self, fila_excel: int, resultado: dict, nombre_persona_relacionada: str) -> None:
-        """
-        resultado: dict devuelto por ScraperSCVSPersonas.buscar_cliente()
-        ({"total_presidente_rl", "total_accionista", "participaciones"}).
-        nombre_persona_relacionada: nombre de quien se busco (cliente o
-        representante legal) - se repite igual en cada slot ocupado,
-        confirmado con Excel real de referencia.
-        """
         self._escribir_valor_con_estilo(fila_excel, self.COL_SCVS_PERSONAS_TOTAL_PRESIDENTE_RL, resultado.get("total_presidente_rl", 0))
         self._escribir_valor_con_estilo(fila_excel, self.COL_SCVS_PERSONAS_TOTAL_ACCIONISTA, resultado.get("total_accionista", 0))
 
@@ -327,6 +348,38 @@ class LocalExcelWriter(ExcelWriter):
                 self._escribir_valor_con_estilo(fila_excel, col_fecha, p.fecha_constitucion)
                 self._escribir_valor_con_estilo(fila_excel, col_obs, p.actividad_economica)
                 self._escribir_valor_con_estilo(fila_excel, col_patrimonio, p.patrimonio_ultimo_anio)
+            else:
+                for col in columnas_slot:
+                    self._escribir_valor_con_estilo(fila_excel, col, "-")
+
+    def escribir_empresas_extranjeras(self, fila_excel: int, empresas: list, nombre_persona_relacionada: str) -> None:
+        for i, columnas_slot in enumerate(self.COL_EMPRESAS_EXTRANJERAS_SLOTS):
+            col_relacionado, col_expediente, col_nombre, col_nacionalidad, col_obs = columnas_slot
+            if i < len(empresas):
+                e = empresas[i]
+                self._escribir_valor_con_estilo(fila_excel, col_relacionado, nombre_persona_relacionada)
+                self._escribir_valor_con_estilo(fila_excel, col_expediente, e.expediente)
+                self._escribir_valor_con_estilo(fila_excel, col_nombre, e.nombre_empresa)
+                self._escribir_valor_con_estilo(fila_excel, col_nacionalidad, e.nacionalidad)
+                self._escribir_valor_con_estilo(fila_excel, col_obs, e.observaciones)
+            else:
+                for col in columnas_slot:
+                    self._escribir_valor_con_estilo(fila_excel, col, "-")
+
+    def escribir_beneficiarios_finales(self, fila_excel: int, beneficiarios: list) -> None:
+        self._escribir_valor_con_estilo(fila_excel, self.COL_BENEFICIARIOS_FINALES_TOTAL, len(beneficiarios) if beneficiarios else "-")
+        for i, columnas_slot in enumerate(self.COL_BENEFICIARIOS_FINALES_SLOTS):
+            col_no, col_id, col_nombre, col_nac, col_tipo, col_valor, col_restr, col_listas = columnas_slot
+            if i < len(beneficiarios):
+                b = beneficiarios[i]
+                self._escribir_valor_con_estilo(fila_excel, col_no, b.numero)
+                self._escribir_valor_con_estilo(fila_excel, col_id, b.identificacion)
+                self._escribir_valor_con_estilo(fila_excel, col_nombre, b.nombre)
+                self._escribir_valor_con_estilo(fila_excel, col_nac, b.nacionalidad)
+                self._escribir_valor_con_estilo(fila_excel, col_tipo, b.tipo_inversion)
+                self._escribir_valor_con_estilo(fila_excel, col_valor, b.valor)
+                self._escribir_valor_con_estilo(fila_excel, col_restr, b.restriccion)
+                self._escribir_valor_con_estilo(fila_excel, col_listas, b.revision_listas)
             else:
                 for col in columnas_slot:
                     self._escribir_valor_con_estilo(fila_excel, col, "-")
@@ -412,14 +465,6 @@ class LocalExcelWriter(ExcelWriter):
         self.wb.save(self.ruta_excel)
 
 
-import truststore
-truststore.inject_into_ssl()
-
-import os
-import msal
-import requests
-
-
 class GraphAPIWriter(ExcelWriter):
     """
     Escribe directamente en el Excel real alojado en el OneDrive de la
@@ -457,20 +502,39 @@ class GraphAPIWriter(ExcelWriter):
         self._refrescar_token()
         return {**self.headers, "workbook-session-id": self.session_id}
 
-    def _patch_con_reintento_sesion(self, url: str, json_body: dict):
+    def _patch_con_reintento_sesion(self, url: str, json_body: dict, intentos_maximos: int = 3):
         """
-        PATCH con recuperación automática de sesión expirada. Confirmado
-        con evidencia real (2026-09-02): en corridas largas (18 sitios
-        antes de llegar a escribir el Excel), la sesión de Graph API
-        puede expirar/invalidarse por un error transitorio del lado del
-        servidor ("InvalidSession"). Se recrea la sesión UNA vez y se
-        reintenta antes de fallar del todo.
+        PATCH con recuperación automática ante 2 tipos de fallo
+        transitorio, confirmados ambos con evidencia real:
+        1. Sesión expirada (400 + "InvalidSession") - se recrea la
+           sesión y se reintenta.
+        2. Servidor de Graph sobrecargado (502/503/504) - confirmado
+           2026-09-04: sin este manejo, un solo 503 tumbaba TODA la
+           escritura de un cliente completo, perdiendo el scraping ya
+           hecho. Se espera un poco (backoff simple) y se reintenta con
+           la misma sesión (no es problema de sesión, es del servidor).
         """
-        resp = requests.patch(url, headers=self._headers_con_sesion(), json=json_body)
-        if resp.status_code == 400 and "InvalidSession" in resp.text:
-            print("    [Graph API] Sesión expirada - recreando sesión y reintentando...")
-            self.session_id = self._crear_sesion()
+        import time
+
+        for intento in range(1, intentos_maximos + 1):
             resp = requests.patch(url, headers=self._headers_con_sesion(), json=json_body)
+
+            if resp.ok:
+                return resp
+
+            if resp.status_code == 400 and "InvalidSession" in resp.text:
+                print(f"    [Graph API] Sesión expirada (intento {intento}/{intentos_maximos}) - recreando sesión...")
+                self.session_id = self._crear_sesion()
+                continue
+
+            if resp.status_code in (502, 503, 504):
+                espera = intento * 3
+                print(f"    [Graph API] Error {resp.status_code} del servidor (intento {intento}/{intentos_maximos}) - esperando {espera}s y reintentando...")
+                time.sleep(espera)
+                continue
+
+            return resp  # error distinto - no reintentable
+
         return resp
 
     def _leer_encabezados(self) -> dict:
@@ -539,14 +603,6 @@ class GraphAPIWriter(ExcelWriter):
         resp.raise_for_status()
 
     def _escribir_valor_con_estilo(self, fila_excel: int, col_idx_0based: int, valor) -> None:
-        """
-        Escribe el valor de una celda Y le aplica el estilo completo
-        (alineacion, fuente, relleno) en cada llamada. Cada peticion
-        pasa por _patch_con_reintento_sesion, que recupera sola la
-        sesion si expiro a mitad de una corrida larga (confirmado con
-        evidencia real: "InvalidSession" tras ~15 min de scraping antes
-        de llegar a escribir el Excel).
-        """
         letra_columna = self._indice_a_letra(col_idx_0based)
         celda = f"{letra_columna}{fila_excel}"
         texto = str(valor).upper() if valor is not None else ""
@@ -635,6 +691,20 @@ class GraphAPIWriter(ExcelWriter):
         (157, 158, 159, 160, 161),
         (162, 163, 164, 165, 166),
         (167, 168, 169, 170, 171),
+    ]
+
+    COL_EMPRESAS_EXTRANJERAS_SLOTS = [
+        (115, 116, 117, 118, 119),
+        (120, 121, 122, 123, 124),
+        (125, 126, 127, 128, 129),
+    ]
+
+    COL_BENEFICIARIOS_FINALES_TOTAL = 82
+    COL_BENEFICIARIOS_FINALES_SLOTS = [
+        (83, 84, 85, 86, 87, 88, 89, 90),
+        (91, 92, 93, 94, 95, 96, 97, 98),
+        (99, 100, 101, 102, 103, 104, 105, 106),
+        (107, 108, 109, 110, 111, 112, 113, 114),
     ]
 
     def escribir_sri_ruc(self, fila_excel: int, datos: dict, datos_representante_legal: dict = None) -> None:
@@ -757,13 +827,6 @@ class GraphAPIWriter(ExcelWriter):
         self._escribir_valor_con_estilo(fila_excel, self.COL_CONTRALORIA_ULTIMO_ANIO, resumen.get("ultimo_anio_en_cargo", "-"))
 
     def escribir_scvs_personas(self, fila_excel: int, resultado: dict, nombre_persona_relacionada: str) -> None:
-        """
-        resultado: dict devuelto por ScraperSCVSPersonas.buscar_cliente()
-        ({"total_presidente_rl", "total_accionista", "participaciones"}).
-        nombre_persona_relacionada: nombre de quien se busco (cliente o
-        representante legal) - se repite igual en cada slot ocupado,
-        confirmado con Excel real de referencia.
-        """
         self._escribir_valor_con_estilo(fila_excel, self.COL_SCVS_PERSONAS_TOTAL_PRESIDENTE_RL, resultado.get("total_presidente_rl", 0))
         self._escribir_valor_con_estilo(fila_excel, self.COL_SCVS_PERSONAS_TOTAL_ACCIONISTA, resultado.get("total_accionista", 0))
 
@@ -785,17 +848,36 @@ class GraphAPIWriter(ExcelWriter):
                 for col in columnas_slot:
                     self._escribir_valor_con_estilo(fila_excel, col, "-")
 
-    def escribir_sentenciados(self, fila_excel: int, total_encontrado: int, top3: list) -> None:
-        self._escribir_valor_con_estilo(fila_excel, self.COL_SENTENCIADOS_TOTAL, str(total_encontrado))
-        for i, (col_no, col_proceso, col_fecha, col_infraccion) in enumerate(self.COL_SENTENCIADOS_SLOTS):
-            if i < len(top3):
-                s = top3[i]
-                self._escribir_valor_con_estilo(fila_excel, col_no, str(i + 1))
-                self._escribir_valor_con_estilo(fila_excel, col_proceso, s.numero_proceso)
-                self._escribir_valor_con_estilo(fila_excel, col_fecha, s.fecha_resolucion)
-                self._escribir_valor_con_estilo(fila_excel, col_infraccion, s.infraccion)
+    def escribir_empresas_extranjeras(self, fila_excel: int, empresas: list, nombre_persona_relacionada: str) -> None:
+        for i, columnas_slot in enumerate(self.COL_EMPRESAS_EXTRANJERAS_SLOTS):
+            col_relacionado, col_expediente, col_nombre, col_nacionalidad, col_obs = columnas_slot
+            if i < len(empresas):
+                e = empresas[i]
+                self._escribir_valor_con_estilo(fila_excel, col_relacionado, nombre_persona_relacionada)
+                self._escribir_valor_con_estilo(fila_excel, col_expediente, e.expediente)
+                self._escribir_valor_con_estilo(fila_excel, col_nombre, e.nombre_empresa)
+                self._escribir_valor_con_estilo(fila_excel, col_nacionalidad, e.nacionalidad)
+                self._escribir_valor_con_estilo(fila_excel, col_obs, e.observaciones)
             else:
-                for col in (col_no, col_proceso, col_fecha, col_infraccion):
+                for col in columnas_slot:
+                    self._escribir_valor_con_estilo(fila_excel, col, "-")
+
+    def escribir_beneficiarios_finales(self, fila_excel: int, beneficiarios: list) -> None:
+        self._escribir_valor_con_estilo(fila_excel, self.COL_BENEFICIARIOS_FINALES_TOTAL, len(beneficiarios) if beneficiarios else "-")
+        for i, columnas_slot in enumerate(self.COL_BENEFICIARIOS_FINALES_SLOTS):
+            col_no, col_id, col_nombre, col_nac, col_tipo, col_valor, col_restr, col_listas = columnas_slot
+            if i < len(beneficiarios):
+                b = beneficiarios[i]
+                self._escribir_valor_con_estilo(fila_excel, col_no, b.numero)
+                self._escribir_valor_con_estilo(fila_excel, col_id, b.identificacion)
+                self._escribir_valor_con_estilo(fila_excel, col_nombre, b.nombre)
+                self._escribir_valor_con_estilo(fila_excel, col_nac, b.nacionalidad)
+                self._escribir_valor_con_estilo(fila_excel, col_tipo, b.tipo_inversion)
+                self._escribir_valor_con_estilo(fila_excel, col_valor, b.valor)
+                self._escribir_valor_con_estilo(fila_excel, col_restr, b.restriccion)
+                self._escribir_valor_con_estilo(fila_excel, col_listas, b.revision_listas)
+            else:
+                for col in columnas_slot:
                     self._escribir_valor_con_estilo(fila_excel, col, "-")
 
     def escribir_funcion_judicial(self, fila_excel: int, procesos: list, total_procesos: int, tematica_general: str) -> None:
@@ -814,6 +896,19 @@ class GraphAPIWriter(ExcelWriter):
                 self._escribir_valor_con_estilo(fila_excel, col_obs, p.resumen_ia)
             else:
                 for col in (col_no, col_fecha, col_proceso, col_accion, col_obs):
+                    self._escribir_valor_con_estilo(fila_excel, col, "-")
+
+    def escribir_sentenciados(self, fila_excel: int, total_encontrado: int, top3: list) -> None:
+        self._escribir_valor_con_estilo(fila_excel, self.COL_SENTENCIADOS_TOTAL, str(total_encontrado))
+        for i, (col_no, col_proceso, col_fecha, col_infraccion) in enumerate(self.COL_SENTENCIADOS_SLOTS):
+            if i < len(top3):
+                s = top3[i]
+                self._escribir_valor_con_estilo(fila_excel, col_no, str(i + 1))
+                self._escribir_valor_con_estilo(fila_excel, col_proceso, s.numero_proceso)
+                self._escribir_valor_con_estilo(fila_excel, col_fecha, s.fecha_resolucion)
+                self._escribir_valor_con_estilo(fila_excel, col_infraccion, s.infraccion)
+            else:
+                for col in (col_no, col_proceso, col_fecha, col_infraccion):
                     self._escribir_valor_con_estilo(fila_excel, col, "-")
 
     def escribir_contraloria_resumen_general(self, fila_excel: int, resumen_general: str) -> None:
@@ -909,6 +1004,9 @@ class GraphAPIWriter(ExcelWriter):
         idx_nombres = self._col("Apellidos Y Nombres (P.Natural / P.Juridica)")
         idx_razon = self._col("Razon Social (Empresa)")
         idx_estado = self._col("ESTADO")
+        idx_sitios_revisar = self._col("SITIOS A REVISAR")
+        idx_rl_nombre = self._col("Representante Legal")
+        idx_rl_id = self._col("ID Representante Legal")
 
         clientes = []
         for offset, fila in enumerate(valores[3:], start=4):
@@ -923,6 +1021,9 @@ class GraphAPIWriter(ExcelWriter):
             nombres = fila[idx_nombres] if idx_nombres < len(fila) else ""
             razon = fila[idx_razon] if idx_razon < len(fila) else ""
             tipo = TipoPersona.NATURAL if nombres else TipoPersona.JURIDICA
+            sitios_revisar = fila[idx_sitios_revisar] if idx_sitios_revisar < len(fila) else ""
+            rl_nombre = fila[idx_rl_nombre] if idx_rl_nombre < len(fila) else ""
+            rl_id = fila[idx_rl_id] if idx_rl_id < len(fila) else ""
 
             clientes.append(Cliente(
                 identificacion=str(identificacion_cruda).strip(),
@@ -930,6 +1031,9 @@ class GraphAPIWriter(ExcelWriter):
                 nombres_completos=(str(nombres).strip() if nombres else ""),
                 razon_social=(str(razon).strip() if razon else ""),
                 fila_excel=offset,
+                sitios_a_revisar_texto=(str(sitios_revisar).strip() if sitios_revisar else ""),
+                representante_legal_nombre_guardado=(str(rl_nombre).strip() if rl_nombre else ""),
+                representante_legal_identificacion_guardada=(str(rl_id).strip() if rl_id else ""),
             ))
 
         return clientes

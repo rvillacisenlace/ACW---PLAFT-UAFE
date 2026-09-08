@@ -211,57 +211,73 @@ class ScraperAntecedentesPenales(BaseScraper):
     def _descargar_certificado(self, page: Page) -> bytes:
         """
         Clic en "Visualizar Certificado" (abre el PDF en pestaña nueva).
-        Los bytes del PDF NO son legibles vía response.body() de
-        Playwright cuando el PDF se renderiza inline (limitación
-        conocida de Playwright/CDP) - se vuelve a pedir la misma URL
-        directamente por HTTP usando el contexto (comparte cookies).
 
-        NOTA: se probó un enfoque con page.context.route() para evitar
-        la segunda peticion por separado, pero causaba un cuelgue
-        indefinido (sin excepcion, sin timeout) especificamente dentro
-        de main.py tras pasar por varios sitios previos en la misma
-        sesion de navegador - nunca reproducido en pruebas aisladas.
-        Un cuelgue sin salida automatica es peor que una excepcion
-        limpia para un proceso batch desatendido, así que se revirtió
-        a este enfoque. Confirmado con evidencia real 2026-08-31.
+        Confirmado con evidencia real (2026-09-04): el enfoque anterior
+        (cerrar la pestaña y volver a pedir la misma URL por HTTP con
+        page.context.request.get()) era bloqueado por Incapsula - la
+        respuesta descargada era una pagina de bloqueo de Incapsula
+        (958 bytes de HTML), no el PDF real. Una peticion HTTP aislada,
+        aunque comparta cookies con el navegador, no tiene la misma
+        huella que si paso el desafio JS de Incapsula durante la carga
+        real en el navegador.
+
+        Nuevo enfoque: se escucha (NO se intercepta - eso ya causo
+        cuelgues, ver nota abajo) la respuesta de red real que carga el
+        PDF en la pestaña nueva, y se toman los bytes de ESA respuesta
+        (que si paso Incapsula), en vez de volver a pedirla por separado.
+
+        NOTA HISTORICA: se probó un enfoque con page.context.route()
+        (interceptar peticiones) para evitar la segunda peticion, pero
+        causaba un cuelgue indefinido (sin excepcion, sin timeout)
+        especificamente dentro de main.py tras pasar por varios sitios
+        previos en la misma sesion de navegador - nunca reproducido en
+        pruebas aisladas. route() intercepta y requiere resolver cada
+        peticion manualmente; un listener de "response" (usado aqui) es
+        solo observacional y no bloquea el pipeline de red, por lo que
+        no debería tener el mismo riesgo de cuelgue - pero esto NO se
+        ha confirmado con evidencia real todavia.
         """
-        boton_visualizar = page.locator("button:has-text('Visualizar Certificado')")
+        respuesta_pdf_capturada = None
 
-        with page.context.expect_page() as info_pestana_nueva:
-            boton_visualizar.click()
-        pestana_pdf = info_pestana_nueva.value
+        def _capturar_respuesta_pdf(response):
+            nonlocal respuesta_pdf_capturada
+            if respuesta_pdf_capturada is not None:
+                return
+            content_type = response.headers.get("content-type", "")
+            if "pdf" in content_type.lower() or "pdf" in response.url.lower():
+                respuesta_pdf_capturada = response
 
-        pestana_pdf.wait_for_load_state("domcontentloaded", timeout=15000)
+        page.context.on("response", _capturar_respuesta_pdf)
+        try:
+            boton_visualizar = page.locator("button:has-text('Visualizar Certificado')")
 
-        url_pdf = pestana_pdf.url
-        for _ in range(10):
-            if url_pdf and url_pdf != "about:blank":
-                break
-            page.wait_for_timeout(500)
-            url_pdf = pestana_pdf.url
+            with page.context.expect_page() as info_pestana_nueva:
+                boton_visualizar.click()
+            pestana_pdf = info_pestana_nueva.value
 
-        if pestana_pdf and not pestana_pdf.is_closed():
-            pestana_pdf.close()
+            try:
+                pestana_pdf.wait_for_load_state("load", timeout=25000)
+            except Exception:
+                pass
 
-        if not url_pdf or url_pdf == "about:blank":
+            for _ in range(20):
+                if respuesta_pdf_capturada is not None:
+                    break
+                page.wait_for_timeout(500)
+
+            if pestana_pdf and not pestana_pdf.is_closed():
+                pestana_pdf.close()
+        finally:
+            page.context.remove_listener("response", _capturar_respuesta_pdf)
+
+        if respuesta_pdf_capturada is None:
             raise ScraperError(
-                f"[{self.nombre_sitio}] La pestaña del certificado nunca navegó a una URL real "
-                f"tras 15s + 5s de espera adicional.",
+                f"[{self.nombre_sitio}] No se detectó ninguna respuesta de red con contenido PDF "
+                f"tras 25s + 10s de espera.",
                 resultado=ResultadoConsulta.ERROR_DESCONOCIDO,
             )
 
-        if "pdf" not in url_pdf.lower() and "certificado" not in url_pdf.lower():
-            print(f"    [aviso] URL de la pestaña no contiene 'pdf' explícito: {url_pdf}")
-
-        respuesta = page.context.request.get(url_pdf, timeout=20000)
-        if not respuesta.ok:
-            raise ScraperError(
-                f"[{self.nombre_sitio}] Falló la re-descarga directa del certificado "
-                f"(status {respuesta.status}) desde {url_pdf}",
-                resultado=ResultadoConsulta.ERROR_DESCONOCIDO,
-            )
-
-        return respuesta.body()
+        return respuesta_pdf_capturada.body()
     
     def _cerrar_aviso_cookies_si_aparece(self, page: Page) -> None:
         """

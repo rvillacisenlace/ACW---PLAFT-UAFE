@@ -20,11 +20,12 @@ el totem) - queda como legado, revisar si sigue haciendo falta para
 otro flujo de Fiscalía.
 """
 from playwright.sync_api import Page
-
+from src.scrapers.base_scraper import derivar_cedula_y_ruc
 from src.scrapers.base_scraper import BaseScraper, ScraperError
 from src.core.models import Cliente, Denuncia, TipoPersona
 from src.procesamiento.normalizacion import normalizar_texto_busqueda
 from src.documentos.evidencia import capturar_evidencia
+from src.scrapers.base_scraper import derivar_cedula_y_ruc
 
 ID_SELECT_CRITERIO = "#tipoBusqueda"
 ID_CAMPO_BUSQUEDA = "#valorBusqueda"
@@ -70,14 +71,7 @@ class ScraperFiscalia(BaseScraper):
         )
 
         if usar_derivacion:
-            cedula_real = (
-                cliente.identificacion if cliente.tipo_persona == TipoPersona.NATURAL
-                else cliente.identificacion[:10]
-            )
-            ruc_real = (
-                f"{cliente.identificacion}001" if cliente.tipo_persona == TipoPersona.NATURAL
-                else cliente.identificacion
-            )
+            cedula_real, ruc_real = derivar_cedula_y_ruc(cliente)
 
             _registrar(self._buscar_una_vez(page, cliente, "cedula", cedula_real))
             _registrar(self._buscar_una_vez(page, cliente, "ruc", ruc_real))
@@ -215,6 +209,15 @@ class ScraperFiscalia(BaseScraper):
         """
         tarjetas = page.locator(f"{ID_CONTENEDOR_RESULTADOS} > div.card").all()
 
+        # La tabla de involucrados del sitio SIEMPRE muestra la cedula
+        # de 10 digitos (nunca el RUC) - confirmado con evidencia real
+        # (2026-09-04): comparar contra cliente.identificacion tal cual
+        # fallaba en silencio cuando esta traia 13 digitos, dejando
+        # "SIN ROL IDENTIFICADO" a un cliente que en realidad SI tenia
+        # rol (ej. DENUNCIANTE). Se usa derivar_cedula_y_ruc() para
+        # comparar siempre con la forma de 10 digitos.
+        cedula_cliente_10_digitos, _ = derivar_cedula_y_ruc(cliente)
+
         nombre_buscado_normalizado = normalizar_texto_busqueda(texto_busqueda).strip().upper() if criterio == "nombre" else None
 
         denuncias = []
@@ -245,7 +248,7 @@ class ScraperFiscalia(BaseScraper):
                     continue
                 cedula_fila, nombre_fila, estado_fila = celdas[0].strip(), celdas[1].strip(), celdas[2].strip()
 
-                if cedula_fila == cliente.identificacion:
+                if cedula_fila == cedula_cliente_10_digitos:
                     estado_rol_cliente = estado_fila
                 if estado_fila.strip().upper() in roles_sospechoso:
                     nombres_sospechosos.append(nombre_fila)

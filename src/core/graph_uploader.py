@@ -84,3 +84,22 @@ class GraphUploader:
                 print(f"    [OneDrive] ({i}/{total}) Falló: {ruta_relativa} - {type(e).__name__}: {e}")
 
         return subidos
+
+    def obtener_link_carpeta_cliente(self, identificacion_cliente: str, año: str, mes: str) -> str:
+        """
+        Devuelve el webUrl real (clicable, abre en el navegador) de la
+        carpeta raíz de evidencia de este cliente en OneDrive. Solo
+        funciona DESPUÉS de que al menos un archivo se haya subido (la
+        carpeta no existe como item consultable hasta entonces).
+        """
+        ruta_carpeta = "/".join([self.carpeta_base, "DebidaDiligencia", año, mes, identificacion_cliente])
+        url = f"https://graph.microsoft.com/v1.0/users/{self.cuenta_onedrive}/drive/root:/{ruta_carpeta}"
+
+        self.writer._refrescar_token()
+        resp = requests.get(url, headers=self.writer.headers)
+
+        if not resp.ok:
+            print(f"    [OneDrive] No se pudo obtener el link de la carpeta ({resp.status_code}) - se deja la ruta local como respaldo.")
+            return ""
+
+        return resp.json().get("webUrl", "")

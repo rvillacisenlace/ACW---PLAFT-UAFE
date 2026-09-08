@@ -14,11 +14,33 @@ import random
 import time
 from abc import ABC, abstractmethod
 from typing import Any
-
 from playwright.sync_api import BrowserContext, Page
-
 from src.core.models import Cliente, ResultadoConsulta
+from src.core.models import Cliente, ResultadoConsulta, TipoPersona
 
+def derivar_cedula_y_ruc(cliente: Cliente) -> tuple[str, str]:
+    """
+    Deriva la cédula (10 dígitos) y el RUC derivado (13 dígitos) de un
+    cliente Natural, SIN asumir que cliente.identificacion siempre
+    tiene 10 dígitos. Confirmado con evidencia real (2026-09-04): a
+    veces la columna "Ruc / CI" del Excel ya trae el RUC completo (13
+    dígitos) para un cliente marcado Natural - la lógica anterior
+    (repetida en Sentenciados, Fiscalía y Función Judicial) siempre
+    concatenaba "001" al valor crudo, produciendo un RUC de 16 dígitos
+    sin sentido cuando la identificación ya venía con 13. Se detecta la
+    longitud real en vez de asumir.
+
+    También cubre el caso Jurídica-con-RUC-de-persona-natural (mismo
+    criterio ya usado en varios scrapers vía
+    cliente.es_juridica_con_ruc_persona_natural) - en ese caso
+    identificacion YA es un RUC completo de 13 dígitos.
+    """
+    if cliente.tipo_persona == TipoPersona.NATURAL:
+        if len(cliente.identificacion) >= 13:
+            return cliente.identificacion[:10], cliente.identificacion
+        return cliente.identificacion, f"{cliente.identificacion}001"
+    else:
+        return cliente.identificacion[:10], cliente.identificacion
 
 class ScraperError(Exception):
     """Error específico de scraping, distinto de un error de programación."""

@@ -20,6 +20,9 @@ class Cliente:
     # en vez de crear una carpeta separada con la cedula del RL.
     identificacion_evidencia: str = ""  # si esta vacio, se usa identificacion normal
     subcarpeta_evidencia: str = ""      # ej. "representante_legal"
+    sitios_a_revisar_texto: str = ""    # crudo de "SITIOS A REVISAR" - usado para reintentos parciales
+    representante_legal_nombre_guardado: str = ""          # de la columna "Representante Legal" ya escrita
+    representante_legal_identificacion_guardada: str = ""  # de la columna "ID Representante Legal" ya escrita
 
     @property
     def nombre_para_mostrar(self) -> str:
@@ -128,6 +131,13 @@ class CompaniaSCVS:
     ruta_pdf: str = ""
 
 @dataclass
+class EmpresaExtranjera:
+    expediente: str = "-"
+    nombre_empresa: str = ""
+    nacionalidad: str = ""
+    observaciones: str = ""  # rol: "Accionista actual", "Accionista anterior", "Apoderado actual", "Apoderado anterior"
+    
+@dataclass
 class DeudaMunicipal:
     tiene_deuda: bool = False
     valor_total: str = "$0.00"
@@ -169,3 +179,14 @@ class LogEntry:
             "ruta_evidencia": self.ruta_evidencia,
             "detalle": self.detalle,
         }
+
+@dataclass
+class BeneficiarioFinal:
+    numero: str = ""
+    identificacion: str = ""
+    nombre: str = ""
+    nacionalidad: str = ""
+    tipo_inversion: str = ""
+    valor: str = ""
+    restriccion: str = ""
+    revision_listas: str = "-"  # sin fuente de datos identificada todavia - la tabla real de SCVS no trae esta columna

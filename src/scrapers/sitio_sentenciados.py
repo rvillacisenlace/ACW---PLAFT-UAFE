@@ -8,6 +8,7 @@ from datetime import datetime
 from playwright.sync_api import Page
 from src.scrapers.base_scraper import BaseScraper, ScraperError
 from src.core.models import Cliente, ResultadoConsulta, Sentenciado, TipoPersona
+from src.scrapers.base_scraper import derivar_cedula_y_ruc
 from src.documentos.almacenamiento import guardar_pdf_local
 from src.documentos.evidencia import capturar_evidencia
 
@@ -40,14 +41,7 @@ class ScraperSentenciados(BaseScraper):
         resultados_crudos = []
 
         if usar_derivacion:
-            cedula_real = (
-                cliente.identificacion if cliente.tipo_persona == TipoPersona.NATURAL
-                else cliente.identificacion[:10]
-            )
-            ruc_real = (
-                f"{cliente.identificacion}001" if cliente.tipo_persona == TipoPersona.NATURAL
-                else cliente.identificacion
-            )
+            cedula_real, ruc_real = derivar_cedula_y_ruc(cliente)
             for identificacion_buscar in (cedula_real, ruc_real):
                 resultados_crudos.extend(self._buscar_una_vez(page, cliente, "cedula", identificacion_buscar))
             resultados_crudos.extend(self._buscar_una_vez(page, cliente, "nombre", cliente.nombres_completos))
@@ -107,6 +101,16 @@ class ScraperSentenciados(BaseScraper):
             print("    [advertencia] el radio de búsqueda no apareció a tiempo, recargando página...")
             page.reload()
             page.wait_for_selector("#radio_1", state="visible", timeout=20000)
+
+        # Esperar a que el loader de carga inicial desaparezca ANTES de
+        # intentar clic en los radio buttons - confirmado con evidencia
+        # real (2026-09-04): el radio aparece "visible" segun Playwright
+        # pero el loader sigue encima (z-index) interceptando el clic,
+        # aunque el elemento ya sea tecnicamente clickeable.
+        try:
+            page.wait_for_selector("#loaderDiv", state="hidden", timeout=15000)
+        except Exception:
+            pass
 
         self.delay_humano(1.0, 1.5)
 

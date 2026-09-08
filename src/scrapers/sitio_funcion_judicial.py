@@ -7,7 +7,7 @@ NO se aplica a personas Jurídicas (riesgo de derivar una cédula de un
 tercero no relacionado al restar "001" de un RUC de empresa).
 """
 from playwright.sync_api import Page
-
+from src.scrapers.base_scraper import derivar_cedula_y_ruc
 from src.scrapers.base_scraper import BaseScraper, ScraperError
 from src.core.models import Cliente, ProcesoJudicial, ResultadoConsulta, TipoPersona
 from src.procesamiento.normalizacion import normalizar_texto_busqueda
@@ -89,17 +89,7 @@ class ScraperFuncionJudicial(BaseScraper):
         )
 
         if usar_derivacion:
-            # Cédula real: si es Natural, es la identificación tal cual.
-            # Si es "Jurídica con RUC de persona natural", se derivan los
-            # primeros 10 dígitos del RUC como cédula real.
-            cedula_real = (
-                cliente.identificacion if cliente.tipo_persona == TipoPersona.NATURAL
-                else cliente.identificacion[:10]
-            )
-            ruc_real = (
-                f"{cliente.identificacion}001" if cliente.tipo_persona == TipoPersona.NATURAL
-                else cliente.identificacion
-            )
+            cedula_real, ruc_real = derivar_cedula_y_ruc(cliente)
             nombre_para_buscar = cliente.nombres_completos
 
             procesos_cedula = self._buscar_con_paginacion_confiable(
@@ -214,14 +204,12 @@ class ScraperFuncionJudicial(BaseScraper):
                         )
                 self._descargar_calificados_de_tabla_actual(page, procesos_finales, en_nombre, cliente)
 
+            cedula_real_reintento, ruc_derivado_reintento = derivar_cedula_y_ruc(cliente)
+
             if en_cedula:
-                cedula_real = (
-                    cliente.identificacion if cliente.tipo_persona == TipoPersona.NATURAL
-                    else cliente.identificacion[:10]
-                )
                 page.goto(self.url_base)
                 self.delay_humano()
-                page.fill(ID_CAMPO_CEDULA, cedula_real)
+                page.fill(ID_CAMPO_CEDULA, cedula_real_reintento)
                 self.delay_humano(0.5, 1.2)
                 self._buscar_con_reintento(page)
                 if self.tiene_captcha(page):
@@ -233,13 +221,9 @@ class ScraperFuncionJudicial(BaseScraper):
                 self._descargar_calificados_de_tabla_actual(page, procesos_finales, en_cedula, cliente)
 
             if en_ruc_derivado:
-                ruc_derivado = (
-                    f"{cliente.identificacion}001" if cliente.tipo_persona == TipoPersona.NATURAL
-                    else cliente.identificacion
-                )
                 page.goto(self.url_base)
                 self.delay_humano()
-                page.fill(ID_CAMPO_CEDULA, ruc_derivado)
+                page.fill(ID_CAMPO_CEDULA, ruc_derivado_reintento)
                 self.delay_humano(0.5, 1.2)
                 self._buscar_con_reintento(page)
                 if self.tiene_captcha(page):

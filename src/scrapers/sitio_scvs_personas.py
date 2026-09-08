@@ -29,10 +29,11 @@ referencia (caso Corredor Camargo Silverio, 1706794003001):
 import time
 
 from playwright.sync_api import Page
-
+from src.scrapers.base_scraper import BaseScraper, ScraperError, derivar_cedula_y_ruc
 from src.scrapers.base_scraper import BaseScraper, ScraperError
 from src.core.models import Cliente, TipoPersona, ParticipacionSocietaria, ResultadoConsulta
 from src.scrapers.sitio_sri import ScraperSRI
+from src.core.models import Cliente, TipoPersona, ParticipacionSocietaria, EmpresaExtranjera, ResultadoConsulta
 
 ID_COMBOBOX_INPUT = "input.z-combobox-inp"
 ID_PANEL_SUGERENCIAS = ".z-combobox-pp .z-comboitem"
@@ -41,7 +42,11 @@ TEXTO_ENCABEZADO_ACCIONISTA_ACTUAL = "Accionista Actual en:"
 TEXTO_ENCABEZADO_ADMINISTRACION_ACTUAL = "Administración Actual en:"
 TEXTO_SIN_COINCIDENCIA = "No existe ninguna coincidencia con el parámetro ingresado"
 MAXIMO_SLOTS = 4
-
+TEXTO_ENCABEZADO_ACCIONISTA_EXTRANJERA_ACTUAL = "Accionista en las siguientes sociedades extranjeras:"
+TEXTO_ENCABEZADO_ACCIONISTA_EXTRANJERA_ANTERIOR = "Accionista anterior en las siguientes sociedades extranjeras:"
+TEXTO_ENCABEZADO_APODERADO_EXTRANJERO_ACTUAL = "Apoderado actual en las siguientes sociedades extranjeras:"
+TEXTO_ENCABEZADO_APODERADO_EXTRANJERO_ANTERIOR = "Apoderado anterior en las siguientes sociedades extranjeras:"
+MAXIMO_SLOTS_EXTRANJERAS = 3
 
 class ScraperSCVSPersonas(BaseScraper):
     nombre_sitio = "SCVS - Consulta de Personas"
@@ -59,55 +64,23 @@ class ScraperSCVSPersonas(BaseScraper):
         - "total_presidente_rl": int (columna Z)
         - "total_accionista": int (columna AA)
         - "participaciones": list[ParticipacionSocietaria], hasta 4 (slots AB-BK)
+        - "empresas_extranjeras": list[EmpresaExtranjera], hasta 3
+
+        Doble validación (confirmado por el usuario, 2026-09-04): los
+        resultados de este sitio salen registrados por CÉDULA (10
+        dígitos), no por RUC (13 dígitos) - se prueba primero con
+        cédula, y solo si no hay coincidencia se reintenta con el RUC
+        derivado. Se usa la que sí traiga resultados.
         """
-        page.goto(self.url_base)
-        self.delay_humano(1.0, 2.0)
+        cedula_real, ruc_real = derivar_cedula_y_ruc(cliente)
 
-        page.click(f"label:has-text('{TEXTO_RADIO_IDENTIFICACION}')")
-        self.delay_humano(0.3, 0.6)
+        resultado_busqueda = self._intentar_busqueda(page, cedula_real)
+        if resultado_busqueda == "sin_coincidencia" and ruc_real != cedula_real:
+            print(f"    [{self.nombre_sitio}] Sin coincidencia por cédula, probando con RUC...")
+            resultado_busqueda = self._intentar_busqueda(page, ruc_real)
 
-        campo = page.locator(ID_COMBOBOX_INPUT).first
-        campo.click()
-        campo.type(cliente.identificacion, delay=100)
-        self.delay_humano(1.0, 1.5)
-
-        valor_campo = campo.input_value()
-        if cliente.identificacion not in valor_campo:
-            raise ScraperError(
-                f"[{self.nombre_sitio}] El campo no se auto-completó como se esperaba para "
-                f"'{cliente.identificacion}' (valor actual: '{valor_campo}').",
-                resultado=ResultadoConsulta.ERROR_DESCONOCIDO,
-            )
-
-        page.locator("span.z-button:has-text('Buscar')").first.click()
-
-        # El sitio puede responder con la pantalla de resultados, o con
-        # un mensaje rojo de "sin coincidencia" (identificacion sin
-        # registros - caso normal, no un error). Polling por ambos.
-        locator_sin_coincidencia = page.locator(f"div.z-div:has-text('{TEXTO_SIN_COINCIDENCIA}')")
-        locator_con_resultados = page.locator(f"td.z-caption-l:has-text('{TEXTO_ENCABEZADO_ACCIONISTA_ACTUAL}')")
-
-        tiempo_limite = time.time() + 20
-        sin_coincidencia = False
-        encontro_resultados = False
-        while time.time() < tiempo_limite:
-            if locator_sin_coincidencia.count() > 0:
-                sin_coincidencia = True
-                break
-            if locator_con_resultados.count() > 0:
-                encontro_resultados = True
-                break
-            page.wait_for_timeout(500)
-
-        if sin_coincidencia:
-            return {"total_presidente_rl": 0, "total_accionista": 0, "participaciones": []}
-
-        if not encontro_resultados:
-            raise ScraperError(
-                f"[{self.nombre_sitio}] Ni resultados ni mensaje de 'sin coincidencia' aparecieron tras 20s "
-                f"para '{cliente.identificacion}' - posible cambio en el sitio.",
-                resultado=ResultadoConsulta.ERROR_DESCONOCIDO,
-            )
+        if resultado_busqueda == "sin_coincidencia":
+            return {"total_presidente_rl": 0, "total_accionista": 0, "participaciones": [], "empresas_extranjeras": []}
 
         try:
             page.wait_for_load_state("networkidle", timeout=8000)
@@ -131,9 +104,8 @@ class ScraperSCVSPersonas(BaseScraper):
         participaciones = self._fusionar_por_ruc(filas_administracion, filas_accionista)
         participaciones = participaciones[:MAXIMO_SLOTS]
 
-        # Consulta cruzada por RUC via SRI para Actividad Economica
-        # (Observaciones) y Fecha de Constitucion, en pestaña separada
-        # para no interferir con 'page' (que sigue en SCVS).
+        empresas_extranjeras = self._extraer_empresas_extranjeras(page)
+
         for participacion in participaciones:
             pagina_sri = page.context.new_page()
             try:
@@ -154,7 +126,54 @@ class ScraperSCVSPersonas(BaseScraper):
             "total_presidente_rl": total_presidente_rl,
             "total_accionista": total_accionista,
             "participaciones": participaciones,
+            "empresas_extranjeras": empresas_extranjeras,
         }
+
+    def _intentar_busqueda(self, page: Page, identificacion: str) -> str:
+        """
+        Un intento de búsqueda completo con una identificación dada.
+        Devuelve "con_resultados" o "sin_coincidencia" - nunca lanza
+        excepción para el caso "sin coincidencia" (es un resultado
+        válido, se reintenta con la otra forma de identificación desde
+        buscar_cliente()).
+        """
+        page.goto(self.url_base)
+        self.delay_humano(1.0, 2.0)
+
+        page.click(f"label:has-text('{TEXTO_RADIO_IDENTIFICACION}')")
+        self.delay_humano(0.3, 0.6)
+
+        campo = page.locator(ID_COMBOBOX_INPUT).first
+        campo.click()
+        campo.type(identificacion, delay=100)
+        self.delay_humano(1.0, 1.5)
+
+        valor_campo = campo.input_value()
+        if identificacion not in valor_campo:
+            raise ScraperError(
+                f"[{self.nombre_sitio}] El campo no se auto-completó como se esperaba para "
+                f"'{identificacion}' (valor actual: '{valor_campo}').",
+                resultado=ResultadoConsulta.ERROR_DESCONOCIDO,
+            )
+
+        page.locator("span.z-button:has-text('Buscar')").first.click()
+
+        locator_sin_coincidencia = page.locator(f"div.z-div:has-text('{TEXTO_SIN_COINCIDENCIA}')")
+        locator_con_resultados = page.locator(f"td.z-caption-l:has-text('{TEXTO_ENCABEZADO_ACCIONISTA_ACTUAL}')")
+
+        tiempo_limite = time.time() + 20
+        while time.time() < tiempo_limite:
+            if locator_sin_coincidencia.count() > 0:
+                return "sin_coincidencia"
+            if locator_con_resultados.count() > 0:
+                return "con_resultados"
+            page.wait_for_timeout(500)
+
+        raise ScraperError(
+            f"[{self.nombre_sitio}] Ni resultados ni mensaje de 'sin coincidencia' aparecieron tras 20s "
+            f"para '{identificacion}' - posible cambio en el sitio.",
+            resultado=ResultadoConsulta.ERROR_DESCONOCIDO,
+        )
 
     def _extraer_tabla(self, page: Page, texto_encabezado: str) -> list[dict]:
         """
@@ -200,6 +219,51 @@ class ScraperSCVSPersonas(BaseScraper):
                 })
 
         return filas
+
+    def _extraer_empresas_extranjeras(self, page: Page) -> list[EmpresaExtranjera]:
+        """
+        Combina las 4 secciones de sociedades extranjeras ("Accionista
+        actual/anterior", "Apoderado actual/anterior"), cada una
+        etiquetada con su propio rol en Observaciones. Se toman las
+        primeras 3 en total, priorizando ACTUALES antes que ANTERIORES
+        (supuesto propio, no confirmado con el usuario - no se dio una
+        regla explícita de orden para este bloque, a diferencia del
+        bloque de Empresas Relacionadas que sí tenía "capital invertido
+        descendente" como regla confirmada).
+
+        Mismas columnas en las 4 secciones: Expediente, Nombre,
+        Nacionalidad (sin RUC, son sociedades extranjeras).
+        """
+        secciones = [
+            (TEXTO_ENCABEZADO_ACCIONISTA_EXTRANJERA_ACTUAL, "Accionista actual"),
+            (TEXTO_ENCABEZADO_APODERADO_EXTRANJERO_ACTUAL, "Apoderado actual"),
+            (TEXTO_ENCABEZADO_ACCIONISTA_EXTRANJERA_ANTERIOR, "Accionista anterior"),
+            (TEXTO_ENCABEZADO_APODERADO_EXTRANJERO_ANTERIOR, "Apoderado anterior"),
+        ]
+
+        resultado = []
+        for texto_encabezado, rol in secciones:
+            encabezado = page.locator(f"td.z-caption-l:has-text('{texto_encabezado}')").first
+            if encabezado.count() == 0:
+                continue
+
+            contenedor_datos = encabezado.locator(
+                "xpath=ancestor::div[@class='z-groupbox-3d'][1]/div[contains(@class,'z-groupbox-3d-cnt')]"
+            )
+            filas = contenedor_datos.locator("tr.z-listitem").all()
+
+            for fila in filas:
+                celdas = fila.locator("td").all_inner_texts()
+                celdas = [c.strip() for c in celdas]
+                if len(celdas) < 3:
+                    continue
+                # Columnas: Expediente, Nombre, Nacionalidad
+                resultado.append(EmpresaExtranjera(
+                    expediente=celdas[0], nombre_empresa=celdas[1],
+                    nacionalidad=celdas[2], observaciones=rol,
+                ))
+
+        return resultado[:MAXIMO_SLOTS_EXTRANJERAS]
 
     def _fusionar_por_ruc(self, filas_administracion: list[dict], filas_accionista: list[dict]) -> list[ParticipacionSocietaria]:
         """
