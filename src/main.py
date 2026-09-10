@@ -54,15 +54,31 @@ from src.scrapers.cadena_representante import resolver_representante_legal
 
 RUTA_EXCEL_LOCAL = "templates/Matriz Revisión Clientes.xlsx"
 
-_writer_parametros = GraphAPIWriter(
-    cuenta_onedrive=os.getenv("CUENTA_ONEDRIVE", "unidadq@enlace.ec"),
-    drive_id=os.getenv("GRAPH_DRIVE_ID"),
-    item_id=os.getenv("GRAPH_EXCEL_ITEM_ID"),
-    tenant_id=os.getenv("AZURE_TENANT_ID"),
-    client_id=os.getenv("AZURE_CLIENT_ID"),
-    client_secret=os.getenv("AZURE_CLIENT_SECRET"),
-)
-_parametros = _writer_parametros.leer_parametrizacion()
+try:
+    _writer_parametros = GraphAPIWriter(
+        cuenta_onedrive=os.getenv("CUENTA_ONEDRIVE", "unidadq@enlace.ec"),
+        drive_id=os.getenv("GRAPH_DRIVE_ID"),
+        item_id=os.getenv("GRAPH_EXCEL_ITEM_ID"),
+        tenant_id=os.getenv("AZURE_TENANT_ID"),
+        client_id=os.getenv("AZURE_CLIENT_ID"),
+        client_secret=os.getenv("AZURE_CLIENT_SECRET"),
+    )
+    _parametros = _writer_parametros.leer_parametrizacion()
+except Exception:
+    # Este bloque corre al IMPORTAR el modulo, antes de main() - un
+    # fallo aqui (credenciales mal configuradas en el .env, sin
+    # internet, permisos de Graph, etc.) cerraba la ventana del .exe
+    # al instante sin que se pudiera leer nada.
+    import traceback
+    print(f"\n{'='*70}")
+    print("ERROR AL INICIAR - no se pudo conectar con el Excel de OneDrive")
+    print(f"{'='*70}\n")
+    traceback.print_exc()
+    print(f"\n{'='*70}")
+    print("Revisa que el archivo .env tenga las credenciales correctas.")
+    print(r"Ubicacion: %APPDATA%\Lynx\.env")
+    input("\nCopia el error de arriba y presiona ENTER para cerrar...")
+    raise SystemExit(1)
 
 _MAPEO_URLS = {
     "funcion_judicial": "URL_FUNCION_JUDICIAL",
@@ -513,4 +529,23 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # Envoltura para que CUALQUIER error inesperado quede visible antes
+    # de que la ventana se cierre - critico al correr como .exe
+    # empaquetado, donde no hay terminal que sobreviva al proceso
+    # (confirmado con evidencia real 2026-09-10: en otra maquina fallaba
+    # y era imposible leer el error, la ventana se cerraba al instante).
+    # El input() que ya existe al final de main() solo cubre el caso
+    # EXITOSO - este cubre los fallos.
+    try:
+        main()
+    except SystemExit:
+        raise  # salida intencional (ej. faltan parametros) - ya imprimio su propio mensaje
+    except Exception:
+        import traceback
+        print(f"\n{'='*70}")
+        print("ERROR INESPERADO - el programa se detuvo")
+        print(f"{'='*70}\n")
+        traceback.print_exc()
+        print(f"\n{'='*70}")
+        input("Copia el error de arriba y presiona ENTER para cerrar...")
+        raise

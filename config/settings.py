@@ -22,12 +22,18 @@ import sys
 def _ruta_env() -> str:
     """
     Cuando el programa está empaquetado (PyInstaller), el .env real vive
-    en %APPDATA%\\ACW Informes Legales\\.env (separado de la instalación,
-    para que se pueda editar sin reinstalar). En desarrollo, se sigue
-    usando el .env local del proyecto, como siempre.
+    en %APPDATA%\\Lynx\\.env (separado de la instalación, para que se
+    pueda editar sin reinstalar). En desarrollo, se sigue usando el
+    .env local del proyecto, como siempre.
+
+    NOTA: hasta 2026-09-09 esta ruta decia "ACW Informes Legales" -
+    nombre del proyecto HERMANO (ACW-InformesLegales), copiado por
+    error al construir este proyecto. Nunca importó en desarrollo
+    (sys.frozen es False), pero SI hubiera importado en el primer
+    empaquetado real - corregido antes de llegar a ese punto (Fase 5).
     """
     if getattr(sys, "frozen", False):
-        ruta = os.path.join(os.environ.get("APPDATA", ""), "ACW Informes Legales", ".env")
+        ruta = os.path.join(os.environ.get("APPDATA", ""), "Lynx", ".env")
         if os.path.exists(ruta):
             return ruta
     return ".env"  # comportamiento normal en desarrollo
