@@ -366,8 +366,15 @@ class LocalExcelWriter(ExcelWriter):
                 for col in columnas_slot:
                     self._escribir_valor_con_estilo(fila_excel, col, "-")
 
-    def escribir_beneficiarios_finales(self, fila_excel: int, beneficiarios: list) -> None:
-        self._escribir_valor_con_estilo(fila_excel, self.COL_BENEFICIARIOS_FINALES_TOTAL, len(beneficiarios) if beneficiarios else "-")
+    def escribir_beneficiarios_finales(self, fila_excel: int, beneficiarios: list, total_real: int = None) -> None:
+        """
+        total_real: total REAL de beneficiarios encontrados (puede ser
+        mayor a 4 - confirmado con evidencia real: OROVOL S.A. tiene
+        109). Si no se pasa, se usa len(beneficiarios) como respaldo
+        (comportamiento anterior, para no romper llamadas viejas).
+        """
+        total_a_mostrar = total_real if total_real is not None else (len(beneficiarios) if beneficiarios else "-")
+        self._escribir_valor_con_estilo(fila_excel, self.COL_BENEFICIARIOS_FINALES_TOTAL, total_a_mostrar)
         for i, columnas_slot in enumerate(self.COL_BENEFICIARIOS_FINALES_SLOTS):
             col_no, col_id, col_nombre, col_nac, col_tipo, col_valor, col_restr, col_listas = columnas_slot
             if i < len(beneficiarios):
@@ -862,8 +869,15 @@ class GraphAPIWriter(ExcelWriter):
                 for col in columnas_slot:
                     self._escribir_valor_con_estilo(fila_excel, col, "-")
 
-    def escribir_beneficiarios_finales(self, fila_excel: int, beneficiarios: list) -> None:
-        self._escribir_valor_con_estilo(fila_excel, self.COL_BENEFICIARIOS_FINALES_TOTAL, len(beneficiarios) if beneficiarios else "-")
+    def escribir_beneficiarios_finales(self, fila_excel: int, beneficiarios: list, total_real: int = None) -> None:
+        """
+        total_real: total REAL de beneficiarios encontrados (puede ser
+        mayor a 4 - confirmado con evidencia real: OROVOL S.A. tiene
+        109). Si no se pasa, se usa len(beneficiarios) como respaldo
+        (comportamiento anterior, para no romper llamadas viejas).
+        """
+        total_a_mostrar = total_real if total_real is not None else (len(beneficiarios) if beneficiarios else "-")
+        self._escribir_valor_con_estilo(fila_excel, self.COL_BENEFICIARIOS_FINALES_TOTAL, total_a_mostrar)
         for i, columnas_slot in enumerate(self.COL_BENEFICIARIOS_FINALES_SLOTS):
             col_no, col_id, col_nombre, col_nac, col_tipo, col_valor, col_restr, col_listas = columnas_slot
             if i < len(beneficiarios):

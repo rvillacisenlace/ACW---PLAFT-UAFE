@@ -286,7 +286,18 @@ def procesar_cliente(page, cliente: Cliente, sitios_a_ejecutar=None) -> dict:
 
 
 def _fallo(resultado) -> bool:
-    return isinstance(resultado, dict) and resultado.get("requiere_revision_manual") is True
+    """
+    True si este resultado necesita revision manual - dos casos:
+    1. Fallo total capturado por _ejecutar (dict con
+       'requiere_revision_manual') - el caso de siempre.
+    2. Resultado REAL obtenido con exito, pero con evidencia incompleta
+       (ej. Antecedentes Penales: se obtuvo SI/NO pero el PDF de
+       certificado no se pudo descargar) - el objeto tiene su propio
+       atributo requiere_revision_manual=True, aunque no sea un dict.
+    """
+    if isinstance(resultado, dict) and resultado.get("requiere_revision_manual") is True:
+        return True
+    return getattr(resultado, "requiere_revision_manual", False) is True
 
 
 def _es_sitio_fuera_de_servicio(texto_error: str) -> bool:
@@ -367,12 +378,9 @@ def escribir_resultados_excel(writer: GraphAPIWriter, cliente: Cliente, resultad
         writer.escribir_scvs_companias(fila, registrado=False)
 
     if "beneficiarios_finales" in resultados and not _fallo(resultados["beneficiarios_finales"]):
-        writer.escribir_beneficiarios_finales(fila, resultados["beneficiarios_finales"])
+        datos_beneficiarios = resultados["beneficiarios_finales"]
+        writer.escribir_beneficiarios_finales(fila, datos_beneficiarios["beneficiarios"], total_real=datos_beneficiarios["total"])
     elif cliente.tipo_persona == TipoPersona.NATURAL:
-        # Natural nunca ejecuta este sitio (Beneficiarios Finales solo
-        # aplica a Juridica) - se escribe "-" en gris explicitamente en
-        # vez de dejar las celdas sin tocar, mismo criterio que el
-        # resto de bloques condicionales del Excel.
         writer.escribir_beneficiarios_finales(fila, [])
 
     if "scvs_personas" in resultados and not _fallo(resultados["scvs_personas"]):
@@ -385,7 +393,12 @@ def escribir_resultados_excel(writer: GraphAPIWriter, cliente: Cliente, resultad
         writer.escribir_scvs_personas(fila, scvs_personas, nombre_persona_relacionada)
         writer.escribir_empresas_extranjeras(fila, scvs_personas.get("empresas_extranjeras", []), nombre_persona_relacionada)
 
-    if "antecedentes_penales" in resultados and not _fallo(resultados["antecedentes_penales"]):
+    if "antecedentes_penales" in resultados and not isinstance(resultados["antecedentes_penales"], dict):
+        # No se usa _fallo() aqui a proposito: un resultado con
+        # requiere_revision_manual=True (PDF faltante) SI debe
+        # escribirse (ya tenemos el dato real), solo un fallo TOTAL
+        # (dict, capturado por _ejecutar cuando ni siquiera se pudo
+        # extraer el SI/NO) debe omitirse.
         ap = resultados["antecedentes_penales"]
         posee_bool = str(ap.posee_antecedentes).strip().upper() == "SI"
         writer.escribir_antecedentes_penales(fila, posee_bool)

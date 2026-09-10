@@ -14,7 +14,7 @@ from src.core.models import Cliente, ResultadoConsulta, DeudaMunicipal
 from src.documentos.evidencia import capturar_evidencia
 from src.captcha.resolver import resolver_con_2captcha, CaptchaResolverError
 from config.settings import cargar_infra_config
-
+from src.core.notificaciones import notificar_atencion_manual
 
 class ScraperMunicipioManta(BaseScraper):
     nombre_sitio = "Municipio de Manta"
@@ -97,6 +97,7 @@ class ScraperMunicipioManta(BaseScraper):
         print(f"\n{'='*60}")
         print(f"CAPTCHA reCAPTCHA v2 - {self.nombre_sitio}")
         print(f"Resuelve el captcha en el navegador.")
+        notificar_atencion_manual("Captcha manual requerido", "Municipio de Manta necesita que resuelvas el captcha.")
         input("Cuando termines, presiona ENTER aquí para continuar...")
         print(f"{'='*60}\n")
 

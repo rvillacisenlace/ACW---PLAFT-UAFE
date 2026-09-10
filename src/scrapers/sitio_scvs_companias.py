@@ -118,27 +118,20 @@ class ScraperSCVSCompanias(BaseScraper):
 
         return resultado
 
-    def consultar_beneficiarios_finales(self, page: Page, cliente: Cliente) -> list[BeneficiarioFinal]:
+    def consultar_beneficiarios_finales(self, page: Page, cliente: Cliente) -> dict:
         """
-        Flujo independiente (repite la búsqueda desde cero) para la
-        opción "Beneficiario final de accionistas/socios" del menú.
-
-        La tabla resultante es JERÁRQUICA (numeración "1.", "4.2.",
-        "4.5.1.", etc. - cadenas de accionistas de accionistas). SOLO
-        las filas de nivel superior (numeración sin punto intermedio:
-        "1.", "2.", "3.", ...) tienen la columna "Valor" llena - las
-        demás son detalle de la cadena societaria sin valor propio, y
-        se descartan. Confirmado con evidencia real: el criterio "Valor
-        no vacío" identifica exactamente esas filas, sin depender de
-        parsear colores CSS (que podrían variar).
-
-        Se ordenan por Valor descendente (confirmado por el usuario
-        como el criterio correcto - mismo patron que Empresas
-        Relacionadas de SCVS Personas) y se toman los primeros 4.
+        Devuelve {"total": int, "beneficiarios": list[BeneficiarioFinal]}
+        - "total" es el conteo REAL de beneficiarios de nivel superior
+        (puede ser mucho mayor a 4, confirmado con evidencia real:
+        OROVOL S.A. tiene 109), "beneficiarios" es la lista ya
+        recortada a los primeros 4 por Valor descendente para los
+        slots del Excel. Se devuelven por separado porque la columna
+        "NO. BENEFICIARIOS FINALES" del Excel debe reflejar el total
+        real, no cuantos entraron en los 4 slots.
         """
         encontrada = self._buscar_hasta_menu(page, cliente)
         if not encontrada:
-            return []
+            return {"total": 0, "beneficiarios": []}
 
         enlace_beneficiarios = page.locator("#frmMenu\\:menuBeneficiariosFinales")
         enlace_beneficiarios.wait_for(state="visible", timeout=10000)
@@ -160,9 +153,19 @@ class ScraperSCVSCompanias(BaseScraper):
         from src.documentos.evidencia import capturar_evidencia
         capturar_evidencia(page, cliente.identificacion, sitio="sitio_scvs_beneficiarios_finales_resultado", carpeta_sitio="scvs")
 
-        return self._extraer_beneficiarios_finales(page)
+        todos_los_beneficiarios = self._extraer_beneficiarios_finales(page)
+        return {
+            "total": len(todos_los_beneficiarios),
+            "beneficiarios": todos_los_beneficiarios[:MAXIMO_BENEFICIARIOS_FINALES],
+        }
 
     def _extraer_beneficiarios_finales(self, page: Page) -> list[BeneficiarioFinal]:
+        """
+        Devuelve TODOS los beneficiarios de nivel superior encontrados
+        (sin recortar), ordenados por Valor descendente - el recorte a
+        4 slots se hace en consultar_beneficiarios_finales(), después
+        de contar el total real.
+        """
         tabla = page.locator("#frmInformacionCompanias\\:tblBeneficiarioFinales_data")
         if tabla.count() == 0:
             return []
@@ -185,15 +188,13 @@ class ScraperSCVSCompanias(BaseScraper):
 
         def _valor_numerico(b: BeneficiarioFinal) -> float:
             try:
-                # Formato ecuatoriano: "." separador de miles, ","
-                # separador decimal - ej. "1.786.398,0000"
                 limpio = b.valor.replace(".", "").replace(",", ".")
                 return float(limpio)
             except (ValueError, TypeError):
                 return 0.0
 
         beneficiarios.sort(key=_valor_numerico, reverse=True)
-        return beneficiarios[:MAXIMO_BENEFICIARIOS_FINALES]
+        return beneficiarios
 
     def _buscar_y_seleccionar_empresa(self, page: Page, ruc: str) -> bool:
         campo = page.locator(ID_CAMPO_BUSQUEDA)

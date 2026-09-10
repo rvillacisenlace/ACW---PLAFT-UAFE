@@ -11,6 +11,7 @@ from src.core.models import Cliente, ResultadoConsulta, DeudaMunicipal, TipoPers
 from src.documentos.evidencia import capturar_evidencia
 from src.captcha.resolver import resolver_captcha_imagen_con_2captcha, CaptchaResolverError
 from config.settings import cargar_infra_config
+from src.core.notificaciones import notificar_atencion_manual
 
 class ScraperMunicipioQuito(BaseScraper):
     nombre_sitio = "Municipio de Quito"
@@ -96,6 +97,7 @@ class ScraperMunicipioQuito(BaseScraper):
         print(f"\n{'='*60}")
         print(f"CAPTCHA VISUAL - {self.nombre_sitio}")
         print(f"Escribe el código de la imagen en el navegador.")
+        notificar_atencion_manual("Captcha manual requerido", "Municipio de Quito necesita que resuelvas el captcha.")
         input("Cuando termines, presiona ENTER aquí para continuar...")
         print(f"{'='*60}\n")
 

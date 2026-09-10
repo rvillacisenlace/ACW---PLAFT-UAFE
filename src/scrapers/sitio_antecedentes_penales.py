@@ -14,11 +14,13 @@ from src.documentos.evidencia import capturar_evidencia
 from src.documentos.almacenamiento import guardar_pdf_local
 from src.captcha.resolver import resolver_hcaptcha_con_2captcha, CaptchaResolverError
 from config.settings import cargar_infra_config
+from src.core.notificaciones import notificar_atencion_manual
 
 MOTIVO_CONSULTA_DEFECTO = "Debida diligencia y cumplimiento normativo PLAFT/UAFE"
 
 class ScraperAntecedentesPenales(BaseScraper):
     nombre_sitio = "Antecedentes Penales"
+    FACTOR_VELOCIDAD = 1.0  # sin reduccion - este sitio tiene WAF (Incapsula) confirmado con evidencia real (2026-09-04); mas riesgo de bloqueo si se acelera el ritmo de interaccion
 
     def tiene_captcha(self, page: Page) -> bool:
         """
@@ -108,6 +110,7 @@ class ScraperAntecedentesPenales(BaseScraper):
         print(f"\n{'='*60}")
         print(f"[{self.nombre_sitio}] Posible hCaptcha detectado.")
         print(f"{'='*60}\n")
+        notificar_atencion_manual("Captcha manual requerido", "Antecedentes Penales necesita que resuelvas el captcha.")
         input("Resuelve el captcha. Presiona ENTER cuando ya lo hayas resuelto...")
         print(f"[{self.nombre_sitio}] Continuando...\n")
         
@@ -193,18 +196,16 @@ class ScraperAntecedentesPenales(BaseScraper):
             ruta_guardada = guardar_pdf_local(pdf_bytes, cliente.identificacion_evidencia or cliente.identificacion, "certificado_antecedentes_penales", carpeta_sitio="antecedentes_penales", subcarpeta=cliente.subcarpeta_evidencia)
             resultado.ruta_pdf = ruta_guardada
         except Exception as e:
-            # Decision explicita: si falla la descarga del certificado
-            # PDF, todo el sitio se trata como fallido (aunque
-            # nombre/posee_antecedentes ya se hayan extraido bien) -
-            # se prioriza consistencia con el resto de sitios (binario
-            # OK/revision manual) sobre preservar el dato parcial.
-            # Confirmado con evidencia real: antes esto se tragaba en
-            # silencio y el sitio quedaba marcado "OK" pese a faltar
-            # la evidencia del PDF.
-            raise ScraperError(
-                f"[{self.nombre_sitio}] Falló descarga del certificado PDF: {type(e).__name__}: {e}",
-                resultado=ResultadoConsulta.ERROR_DESCONOCIDO,
-            ) from e
+            # Decision revertida (2026-09-09): antes, si fallaba la
+            # descarga del PDF, se lanzaba una excepcion y se perdia
+            # TODO el resultado (aunque nombre/posee_antecedentes ya
+            # estuvieran extraidos correctamente). Ahora se devuelve el
+            # resultado real igual, marcado con requiere_revision_manual
+            # = True (el cliente queda en "Completado con pendientes",
+            # con el SI/NO ya escrito en Excel, y "Antecedentes Penales"
+            # aparece en SITIOS A REVISAR solo para ir por el PDF).
+            print(f"[{self.nombre_sitio}] Falló descarga del certificado PDF: {type(e).__name__}: {e} - se conserva el resultado (SI/NO), marcado para revisión manual solo por el PDF faltante.")
+            resultado.requiere_revision_manual = True
 
         return resultado
 
@@ -237,15 +238,37 @@ class ScraperAntecedentesPenales(BaseScraper):
         no debería tener el mismo riesgo de cuelgue - pero esto NO se
         ha confirmado con evidencia real todavia.
         """
-        respuesta_pdf_capturada = None
+        bytes_pdf_capturados = None
+        respuestas_vistas_diagnostico = []  # para diagnostico si vuelve a fallar - lista de (url, content_type)
 
         def _capturar_respuesta_pdf(response):
-            nonlocal respuesta_pdf_capturada
-            if respuesta_pdf_capturada is not None:
+            nonlocal bytes_pdf_capturados
+            if bytes_pdf_capturados is not None:
                 return
             content_type = response.headers.get("content-type", "")
-            if "pdf" in content_type.lower() or "pdf" in response.url.lower():
-                respuesta_pdf_capturada = response
+            respuestas_vistas_diagnostico.append((response.url, content_type))
+            # Criterio ampliado (2026-09-09): ademas de "pdf" en el
+            # content-type o la URL, tambien se acepta
+            # "application/octet-stream" (algunos servidores sirven el
+            # PDF asi, sin content-type explicito de PDF) - confirmado
+            # que el criterio anterior no detectaba nada en la mayoria
+            # de los casos reales de esta corrida.
+            es_pdf = (
+                "pdf" in content_type.lower() or "pdf" in response.url.lower()
+                or "octet-stream" in content_type.lower()
+            )
+            if not es_pdf:
+                return
+            try:
+                # Leer los bytes AQUI, inmediatamente, dentro del propio
+                # evento - confirmado con evidencia real (2026-09-09):
+                # esperar a leerlos DESPUES de cerrar la pestana_pdf
+                # lanzaba "TargetClosedError", porque el body() de la
+                # respuesta depende de que la pagina que la origino
+                # siga abierta.
+                bytes_pdf_capturados = response.body()
+            except Exception:
+                pass  # esta respuesta en particular no se pudo leer - se sigue esperando otra
 
         page.context.on("response", _capturar_respuesta_pdf)
         try:
@@ -261,7 +284,7 @@ class ScraperAntecedentesPenales(BaseScraper):
                 pass
 
             for _ in range(20):
-                if respuesta_pdf_capturada is not None:
+                if bytes_pdf_capturados is not None:
                     break
                 page.wait_for_timeout(500)
 
@@ -270,14 +293,15 @@ class ScraperAntecedentesPenales(BaseScraper):
         finally:
             page.context.remove_listener("response", _capturar_respuesta_pdf)
 
-        if respuesta_pdf_capturada is None:
+        if bytes_pdf_capturados is None:
+            print(f"    [diagnóstico] Respuestas de red vistas durante la espera: {respuestas_vistas_diagnostico}")
             raise ScraperError(
                 f"[{self.nombre_sitio}] No se detectó ninguna respuesta de red con contenido PDF "
                 f"tras 25s + 10s de espera.",
                 resultado=ResultadoConsulta.ERROR_DESCONOCIDO,
             )
 
-        return respuesta_pdf_capturada.body()
+        return bytes_pdf_capturados
     
     def _cerrar_aviso_cookies_si_aparece(self, page: Page) -> None:
         """

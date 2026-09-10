@@ -183,16 +183,23 @@ class ScraperSRI(BaseScraper):
             pass
 
         try:
+            # .first - confirmado con evidencia real (2026-09-08): una
+            # empresa puede tener MAS DE UN representante legal listado
+            # (ej. WOOWTECHNOLOGY S.A.S. con 2), y sin .first el
+            # selector coincidia con ambos bloques, causando un "strict
+            # mode violation" que el try/except se tragaba en silencio,
+            # dejando el campo vacio. Se toma siempre el PRIMERO
+            # (decision explicita del usuario).
             datos["representante_legal_nombre"] = page.locator(
                 "div.sri-bold:has-text('Nombre/Razón Social:')"
-            ).locator("xpath=following-sibling::div[1]").inner_text().strip()
+            ).first.locator("xpath=following-sibling::div[1]").inner_text().strip()
         except Exception:
             pass
 
         try:
             datos["representante_legal_identificacion"] = page.locator(
                 "div.sri-bold:has-text('Identificación:')"
-            ).locator("xpath=following-sibling::div[1]").inner_text().strip()
+            ).first.locator("xpath=following-sibling::div[1]").inner_text().strip()
         except Exception:
             pass
 

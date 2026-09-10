@@ -58,9 +58,20 @@ class BaseScraper(ABC):
         self.context = context
         self.url_base = url_base
 
+    # Factor de reduccion global de tiempos (2026-09-08, solicitado
+    # para reducir el tiempo total por cliente). Se aplica UNA vez aqui
+    # en vez de editar las 117 llamadas a delay_humano() repartidas en
+    # 12+ archivos - reduce TODAS las esperas proporcionalmente,
+    # incluyendo las que ya fueron ajustadas hoy en respuesta a bugs
+    # reales de timing (SCVS Personas, Antecedentes Penales, etc.).
+    # Si algun sitio empieza a fallar mas seguido despues de este
+    # cambio, lo primero a sospechar es este factor - se puede subir
+    # de vuelta a 1.0 (sin reduccion) facilmente.
+    FACTOR_VELOCIDAD = 0.6
+
     def delay_humano(self, min_s: float = 0.8, max_s: float = 2.4) -> None:
         """Pausa aleatoria entre acciones. No usar time.sleep fijo en ningún scraper."""
-        time.sleep(random.uniform(min_s, max_s))
+        time.sleep(random.uniform(min_s * self.FACTOR_VELOCIDAD, max_s * self.FACTOR_VELOCIDAD))
 
     def ejecutar_con_reintentos(self, funcion, *args, **kwargs):
         """

@@ -93,6 +93,7 @@ class AntecedentePenal:
     numero_documento: str = ""
     posee_antecedentes: str = ""
     ruta_pdf: str = ""
+    requiere_revision_manual: bool = False  # True si el resultado se obtuvo pero el PDF de evidencia no se pudo descargar
 
 @dataclass
 class Salud:

@@ -9,15 +9,14 @@ base64 en el propio HTML - se resuelve con el método "normal" de
 """
 
 from playwright.sync_api import Page
-
 import unicodedata
 import re
 from datetime import datetime
-
 from src.scrapers.base_scraper import BaseScraper, ScraperError
 from src.core.models import Cliente, ResultadoConsulta, TipoPersona
 from config.settings import cargar_infra_config
 from src.captcha.resolver import resolver_captcha_imagen_con_2captcha, CaptchaResolverError
+from src.core.notificaciones import notificar_atencion_manual
 
 
 class ScraperContraloria(BaseScraper):
@@ -95,6 +94,7 @@ class ScraperContraloria(BaseScraper):
         print(f"CAPTCHA VISUAL - Se requiere intervención manual")
         print(f"Escribe el código de la imagen en el campo del navegador.")
         print(f"Tienes 120 segundos.")
+        notificar_atencion_manual("Captcha manual requerido", "Contraloría necesita que resuelvas el captcha.")
         input("Cuando termines, presiona ENTER aquí para continuar...")
         print(f"{'='*60}\n")
 
