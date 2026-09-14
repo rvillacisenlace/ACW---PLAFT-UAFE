@@ -3,12 +3,21 @@ Contador diario de clientes procesados. Persiste en un archivo JSON
 simple para sobrevivir entre corridas del mismo día (si main.py se
 corre varias veces en un día, el contador se acumula, no se reinicia
 en cada ejecución). Se reinicia automáticamente cuando cambia la fecha.
+
+CAMBIO (2026-09-11): el umbral de 100 pasó de ser un LIMITE DURO (que
+detenía la corrida a medio lote) a ser solo una ADVERTENCIA - el
+programa avisa pero sigue procesando todos los clientes pendientes.
 """
 import json
 import os
 from datetime import date
 
-LIMITE_DIARIO = 100
+# Umbral a partir del cual se muestra una advertencia. NO detiene la
+# corrida - es informativo, para que el usuario sepa que va acumulando
+# muchas consultas en el día (los portales públicos pueden empezar a
+# bloquear o poner más captchas con volúmenes altos).
+UMBRAL_ADVERTENCIA_DIARIO = 100
+
 RUTA_CONTADOR = "data/contador_diario.json"
 
 
@@ -50,5 +59,9 @@ def incrementar_contador_hoy() -> int:
     return estado["contador"]
 
 
-def limite_alcanzado() -> bool:
-    return obtener_contador_hoy() >= LIMITE_DIARIO
+def supero_umbral_advertencia() -> bool:
+    """
+    True si hoy ya se superó el umbral de advertencia. Solo informativo
+    - quien llama decide qué hacer (avisar), NO detiene nada.
+    """
+    return obtener_contador_hoy() >= UMBRAL_ADVERTENCIA_DIARIO

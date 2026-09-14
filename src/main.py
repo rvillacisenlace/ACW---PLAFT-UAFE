@@ -29,7 +29,11 @@ from src.core.models import Cliente, TipoPersona, ResultadoConsulta
 from src.core.logger import registrar_evento
 from src.core.excel_writer import GraphAPIWriter
 from src.core.graph_uploader import GraphUploader
-from src.core.contador_diario import limite_alcanzado, incrementar_contador_hoy, obtener_contador_hoy
+from src.core.contador_diario import (
+    supero_umbral_advertencia, incrementar_contador_hoy, obtener_contador_hoy,
+    UMBRAL_ADVERTENCIA_DIARIO,
+)
+from src.core.notificaciones import notificar_atencion_manual
 
 from src.scrapers.sitio_funcion_judicial import ScraperFuncionJudicial
 from src.scrapers.sitio_fiscalia import ScraperFiscalia
@@ -466,10 +470,24 @@ def main():
         Stealth().apply_stealth_sync(page)
 
         resumen_final = {}
+        # La advertencia de umbral se muestra UNA sola vez por corrida,
+        # no en cada cliente - seria ruido inutil en un lote grande.
+        ya_se_advirtio_umbral = False
         for cliente in clientes:
-            if limite_alcanzado():
-                print("\nHA ALCANZADO EL LIMITE DE CONSULTAS DIARIO")
-                break
+            # Antes esto hacia "break" y detenia el lote a medias. Ahora
+            # solo advierte (2026-09-11) - el usuario decide si sigue o
+            # corta, el programa no lo decide por el.
+            if not ya_se_advirtio_umbral and supero_umbral_advertencia():
+                ya_se_advirtio_umbral = True
+                mensaje_umbral = (
+                    f"Ya van {obtener_contador_hoy()} consultas hoy (umbral de aviso: {UMBRAL_ADVERTENCIA_DIARIO}). "
+                    "La corrida CONTINÚA, pero con volúmenes altos los portales suelen "
+                    "pedir más captchas manuales o bloquear temporalmente."
+                )
+                print(f"\n{'='*70}")
+                print(f"ADVERTENCIA: {mensaje_umbral}")
+                print(f"{'='*70}\n")
+                notificar_atencion_manual("Lynx - muchas consultas hoy", mensaje_umbral)
 
             incrementar_contador_hoy()
             momento_inicio_cliente = datetime.now()
@@ -478,12 +496,12 @@ def main():
             if sitios_a_ejecutar is not None:
                 nombres_legibles = [_MAPEO_NOMBRES_LEGIBLES.get(s, s) for s in sitios_a_ejecutar]
                 print(f"\n{'='*70}")
-                print(f"REINTENTO PARCIAL: {cliente.identificacion} - {cliente.nombre_para_mostrar} (consulta {obtener_contador_hoy()}/100 hoy)")
+                print(f"REINTENTO PARCIAL: {cliente.identificacion} - {cliente.nombre_para_mostrar} (consulta {obtener_contador_hoy()} hoy)")
                 print(f"Solo se re-ejecutan: {', '.join(nombres_legibles)}")
                 print(f"{'='*70}\n")
             else:
                 print(f"\n{'='*70}")
-                print(f"PROCESANDO CLIENTE: {cliente.identificacion} - {cliente.nombre_para_mostrar} (consulta {obtener_contador_hoy()}/100 hoy)")
+                print(f"PROCESANDO CLIENTE: {cliente.identificacion} - {cliente.nombre_para_mostrar} (consulta {obtener_contador_hoy()} hoy)")
                 print(f"{'='*70}\n")
 
             resultados = procesar_cliente(page, cliente, sitios_a_ejecutar=sitios_a_ejecutar)
