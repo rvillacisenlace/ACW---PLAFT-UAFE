@@ -16,7 +16,7 @@
 ; =====================================================================
 
 #define NombreApp "Lynx"
-#define VersionApp "2.5-beta"
+#define VersionApp "2.7-beta"
 #define PublicadorApp "Enlace"
 #define EjecutableApp "Lynx.exe"
 

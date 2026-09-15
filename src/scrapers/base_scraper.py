@@ -58,16 +58,15 @@ class BaseScraper(ABC):
         self.context = context
         self.url_base = url_base
 
-    # Factor de reduccion global de tiempos (2026-09-08, solicitado
-    # para reducir el tiempo total por cliente). Se aplica UNA vez aqui
-    # en vez de editar las 117 llamadas a delay_humano() repartidas en
-    # 12+ archivos - reduce TODAS las esperas proporcionalmente,
-    # incluyendo las que ya fueron ajustadas hoy en respuesta a bugs
-    # reales de timing (SCVS Personas, Antecedentes Penales, etc.).
-    # Si algun sitio empieza a fallar mas seguido despues de este
-    # cambio, lo primero a sospechar es este factor - se puede subir
-    # de vuelta a 1.0 (sin reduccion) facilmente.
-    FACTOR_VELOCIDAD = 0.6
+    # Revertido a 1.0 (2026-09-15). El 0.6 introducido el 2026-09-08
+    # para acelerar causo lo contrario: 27% de las operaciones dieron
+    # timeout (52 de 196), con SRI RUC consumiendo el 31% del tiempo
+    # total porque el boton "Consultar" quedaba DESHABILITADO - la
+    # validacion de Angular no alcanzaba a dispararse al escribir tan
+    # rapido. Cada fallo costaba ademas el doble por el reintento
+    # agregado en _ejecutar. Resultado: 33 min/cliente contra 7 min antes.
+    # NO volver a bajar esto sin medir una corrida completa despues.
+    FACTOR_VELOCIDAD = 1.0
 
     def delay_humano(self, min_s: float = 0.8, max_s: float = 2.4) -> None:
         """Pausa aleatoria entre acciones. No usar time.sleep fijo en ningún scraper."""
