@@ -5,6 +5,10 @@ from playwright_stealth import Stealth
 from src.scrapers.base_scraper import BaseScraper, ScraperError
 from src.core.models import Cliente, ResultadoConsulta, TipoPersona
 
+# Marca "el RUC no existe en el SRI". Se comparte con main.py (que la usa
+# para saltarse SRI Deudas y Estado Tributario): un solo lugar, para que
+# el texto no diverja entre ambos archivos.
+ESTADO_SIN_REGISTRO_SRI = "SIN REGISTRO EN SRI"
 ID_CAMPO_RUC = "#busquedaRucId"
 
 
@@ -53,6 +57,31 @@ class ScraperSRI(BaseScraper):
         page.wait_for_timeout(random.randint(500, 1000))
 
         botones_consultar = page.locator("button:has-text('Consultar')")
+        mensaje_sin_resultados = page.locator("span.ui-messages-detail:has-text('La búsqueda no generó resultados')")
+
+        # HTML real (2026-09-17): a veces el mensaje "sin resultados"
+        # aparece apenas se escribe el RUC (validacion propia del SRI),
+        # y el boton "Consultar" NUNCA se habilita. Sin esto, el .click()
+        # de abajo esperaria hasta 30s a que un boton deshabilitado se
+        # habilite, y nunca llegaria al fix de "sin resultados tras el
+        # clic" que ya existe mas adelante en este mismo metodo.
+        if mensaje_sin_resultados.count() > 0:
+            print(f"[{self.nombre_sitio}] Sin registro en el SRI para {ruc_a_consultar} (detectado antes de Consultar).")
+            from src.documentos.evidencia import capturar_evidencia
+            capturar_evidencia(
+                page, cliente.identificacion_evidencia or cliente.identificacion,
+                sitio="sitio_sri_ruc_sin_resultados", carpeta_sitio="sri",
+                subcarpeta=cliente.subcarpeta_evidencia,
+            )
+            return {
+                "razon_social": "", "estado_contribuyente": ESTADO_SIN_REGISTRO_SRI,
+                "actividad_economica": "", "fecha_inicio_actividades": "",
+                "fecha_actualizacion": "", "fecha_cese_actividades": "",
+                "fecha_reinicio_actividades": "", "direccion_matriz": "",
+                "representante_legal_nombre": "", "representante_legal_identificacion": "",
+                "contribuyente_fantasma": "", "contribuyente_transacciones_inexistentes": "",
+            }
+
         botones_consultar.first.click()
         self.delay_humano(5.0, 8.0)
 
@@ -76,7 +105,33 @@ class ScraperSRI(BaseScraper):
                 )
 
         boton_mostrar_establecimientos = page.locator("button:has-text('Mostrar establecimientos')")
-        boton_mostrar_establecimientos.wait_for(state="visible", timeout=15000)
+        mensaje_sin_resultados = page.locator("span.ui-messages-detail:has-text('La búsqueda no generó resultados')")
+
+        # Se espera CUALQUIERA de los dos desenlaces. Antes solo se
+        # esperaba "Mostrar establecimientos", y cuando el SRI respondia
+        # "La búsqueda no generó resultados" (HTML real, 2026-09-17) el
+        # codigo truenaba por timeout y el cliente iba a revision manual
+        # aunque el sitio respondio bien. .or_() mantiene el TimeoutError
+        # nativo si no aparece NINGUNO, asi el reintento de _ejecutar no cambia.
+        boton_mostrar_establecimientos.or_(mensaje_sin_resultados).first.wait_for(state="visible", timeout=15000)
+
+        if mensaje_sin_resultados.count() > 0:
+            print(f"[{self.nombre_sitio}] Sin registro en el SRI para {ruc_a_consultar}.")
+            from src.documentos.evidencia import capturar_evidencia
+            capturar_evidencia(
+                page, cliente.identificacion_evidencia or cliente.identificacion,
+                sitio="sitio_sri_ruc_sin_resultados", carpeta_sitio="sri",
+                subcarpeta=cliente.subcarpeta_evidencia,
+            )
+            return {
+                "razon_social": "", "estado_contribuyente": ESTADO_SIN_REGISTRO_SRI,
+                "actividad_economica": "", "fecha_inicio_actividades": "",
+                "fecha_actualizacion": "", "fecha_cese_actividades": "",
+                "fecha_reinicio_actividades": "", "direccion_matriz": "",
+                "representante_legal_nombre": "", "representante_legal_identificacion": "",
+                "contribuyente_fantasma": "", "contribuyente_transacciones_inexistentes": "",
+            }
+
         boton_mostrar_establecimientos.click()
         self.delay_humano(5.0, 8.0)
 

@@ -261,6 +261,12 @@ class LocalExcelWriter(ExcelWriter):
             texto = obligaciones_pendientes
         self._escribir_valor_con_estilo(fila_excel, col, texto)
 
+    def escribir_sri_sin_registro(self, fila_excel: int) -> None:
+        """El RUC no existe en el SRI: Deudas y Estado Tributario no se
+        consultaron. "-" en gris, mismo criterio que el resto de N/A."""
+        self._escribir_valor_con_estilo(fila_excel, self._col("SRI DEUDAS"), "-")
+        self._escribir_valor_con_estilo(fila_excel, self._col("SRI OBLIGACIONES TRIBUTARIAS"), "-")
+
     def escribir_municipios(self, fila_excel: int, resultados: dict) -> None:
         municipios_con_deuda = []
         total_deuda = 0.0
@@ -763,6 +769,12 @@ class GraphAPIWriter(ExcelWriter):
         else:
             texto = obligaciones_pendientes
         self._escribir_valor_con_estilo(fila_excel, col, texto)
+
+    def escribir_sri_sin_registro(self, fila_excel: int) -> None:
+        """El RUC no existe en el SRI: Deudas y Estado Tributario no se
+        consultaron. "-" en gris, mismo criterio que el resto de N/A."""
+        self._escribir_valor_con_estilo(fila_excel, self._col("SRI DEUDAS"), "-")
+        self._escribir_valor_con_estilo(fila_excel, self._col("SRI OBLIGACIONES TRIBUTARIAS"), "-")
 
     def escribir_municipios(self, fila_excel: int, resultados: dict) -> None:
         municipios_con_deuda = []

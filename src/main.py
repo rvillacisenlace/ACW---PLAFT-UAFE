@@ -39,7 +39,7 @@ from src.scrapers.sitio_funcion_judicial import ScraperFuncionJudicial
 from src.scrapers.sitio_fiscalia import ScraperFiscalia
 from src.scrapers.sitio_sentenciados import ScraperSentenciados
 from src.scrapers.sitio_antecedentes_penales import ScraperAntecedentesPenales
-from src.scrapers.sitio_sri import ScraperSRI
+from src.scrapers.sitio_sri import ScraperSRI, ESTADO_SIN_REGISTRO_SRI
 from src.scrapers.sitio_sri_deudas import ScraperSRIDeudas
 from src.scrapers.sitio_sri_estado_tributario import ScraperSRIEstadoTributario
 from src.scrapers.sitio_salud import ScraperSalud
@@ -174,8 +174,31 @@ def _parsear_sitios_a_reintentar(texto: str) -> set | None:
     return claves if claves else None
 
 
-def procesar_cliente(page, cliente: Cliente, sitios_a_ejecutar=None) -> dict:
+def procesar_cliente(page, cliente: Cliente, sitios_a_ejecutar=None, crear_pagina=None) -> dict:
+    """
+    crear_pagina: funcion sin argumentos que relanza navegador/contexto/
+    pagina y devuelve la pagina nueva. Si se pasa, se verifica antes de
+    CADA sitio que la pagina siga viva, y se recrea si murio.
+    """
     resultados = {}
+
+    def _asegurar_pagina_viva():
+        # "nonlocal page" es lo que hace que esto funcione: los lambdas
+        # de cada sitio resuelven el nombre "page" al momento de
+        # ejecutarse, no al definirse, asi que al reasignarlo aqui todos
+        # los sitios siguientes usan la pagina nueva automaticamente.
+        nonlocal page
+        try:
+            if not page.is_closed():
+                page.context.pages  # falla si el contexto/navegador murio
+                return
+        except Exception:
+            pass
+
+        if crear_pagina is None:
+            return  # sin forma de recuperar - se comporta como antes
+        print("    [navegador] La página murió - recreando navegador y continuando...")
+        page = crear_pagina()
 
     def _ejecutar(nombre_paso, funcion, intentos_maximos=2):
         """
@@ -193,6 +216,7 @@ def procesar_cliente(page, cliente: Cliente, sitios_a_ejecutar=None) -> dict:
         if sitios_a_ejecutar is not None and nombre_paso not in sitios_a_ejecutar:
             return
 
+        _asegurar_pagina_viva()
         ultimo_error = None
         for intento in range(1, intentos_maximos + 1):
             try:
@@ -237,8 +261,14 @@ def procesar_cliente(page, cliente: Cliente, sitios_a_ejecutar=None) -> dict:
         )
 
     _ejecutar("sri_ruc", lambda: ScraperSRI(context=page.context, url_base=URLS["sri_ruc"]).consultar_ruc(page, cliente))
-    _ejecutar("sri_deudas", lambda: ScraperSRIDeudas(context=page.context, url_base=URLS["sri_deudas"]).consultar_deudas(page, cliente))
-    _ejecutar("sri_estado_tributario", lambda: ScraperSRIEstadoTributario(context=page.context, url_base=URLS["sri_estado_tributario"]).consultar_estado_tributario(page, cliente))
+    # Si el RUC no existe en el SRI, consultar Deudas y Estado Tributario
+    # con ese mismo RUC es tiempo perdido - y son justo los dos scrapers
+    # con reintentos lentos por spinner (~75s cada uno antes de rendirse).
+    if _sin_registro_sri(resultados):
+        print(f"[{cliente.identificacion}] Sin registro en SRI - se omiten SRI Deudas y SRI Estado Tributario.")
+    else:
+        _ejecutar("sri_deudas", lambda: ScraperSRIDeudas(context=page.context, url_base=URLS["sri_deudas"]).consultar_deudas(page, cliente))
+        _ejecutar("sri_estado_tributario", lambda: ScraperSRIEstadoTributario(context=page.context, url_base=URLS["sri_estado_tributario"]).consultar_estado_tributario(page, cliente))
 
     cliente_para_persona = cliente
     ruc_representante = ""
@@ -253,7 +283,10 @@ def procesar_cliente(page, cliente: Cliente, sitios_a_ejecutar=None) -> dict:
     if necesita_representante_legal:
         scraper_sri_cadena = ScraperSRI(context=page.context, url_base=URLS["sri_ruc"])
         try:
-            cadena = resolver_representante_legal(page, scraper_sri_cadena, cliente)
+            datos_sri_previos = resultados.get("sri_ruc")
+            if _fallo(datos_sri_previos) or not isinstance(datos_sri_previos, dict):
+                datos_sri_previos = None
+            cadena = resolver_representante_legal(page, scraper_sri_cadena, cliente, datos_sri_nivel1=datos_sri_previos)
             if sitios_a_ejecutar is None or "cadena_representante_legal" in sitios_a_ejecutar:
                 resultados["cadena_representante_legal"] = cadena
                 if not cadena["persona_encontrada"]:
@@ -319,6 +352,10 @@ def _fallo(resultado) -> bool:
         return True
     return getattr(resultado, "requiere_revision_manual", False) is True
 
+def _sin_registro_sri(resultados: dict) -> bool:
+    """True si la consulta de RUC respondio que no existe en el SRI."""
+    datos = resultados.get("sri_ruc")
+    return isinstance(datos, dict) and datos.get("estado_contribuyente") == ESTADO_SIN_REGISTRO_SRI
 
 def _es_sitio_fuera_de_servicio(texto_error: str) -> bool:
     señales_sitio_caido = [
@@ -362,6 +399,9 @@ def escribir_resultados_excel(writer: GraphAPIWriter, cliente: Cliente, resultad
     if "sri_estado_tributario" in resultados and not _fallo(resultados["sri_estado_tributario"]):
         estado_trib = resultados["sri_estado_tributario"]
         writer.escribir_sri_estado_tributario(fila, estado_trib.resultado, estado_trib.obligaciones_pendientes)
+
+    if _sin_registro_sri(resultados):
+        writer.escribir_sri_sin_registro(fila)
 
     mapeo_municipios = {
         "Quito": "municipio_quito", "Cuenca": "municipio_cuenca", "Ambato": "municipio_ambato",
@@ -464,10 +504,30 @@ def main():
     uploader = GraphUploader(cuenta_onedrive=os.getenv("CUENTA_ONEDRIVE", "unidadq@enlace.ec"), writer=writer)
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False, slow_mo=200, channel="chrome")
-        context = browser.new_context(ignore_https_errors=True)
-        page = context.new_page()
-        Stealth().apply_stealth_sync(page)
+        # El navegador se crea a traves de una fabrica para poder
+        # RECREARLO si muere a mitad de corrida. Confirmado con evidencia
+        # real (2026-09-16): al morir la pagina, los 12 sitios del cliente
+        # fallaron en el mismo segundo con TargetClosedError, y el cliente
+        # quedo marcado como pendiente sin haber consultado nada.
+        estado_navegador = {"browser": None, "context": None}
+
+        def _nuevo_navegador():
+            for clave in ("context", "browser"):
+                objeto = estado_navegador.get(clave)
+                if objeto is not None:
+                    try:
+                        objeto.close()
+                    except Exception:
+                        pass
+            navegador = p.chromium.launch(headless=False, slow_mo=200, channel="chrome")
+            contexto = navegador.new_context(ignore_https_errors=True)
+            pagina = contexto.new_page()
+            Stealth().apply_stealth_sync(pagina)
+            estado_navegador["browser"] = navegador
+            estado_navegador["context"] = contexto
+            return pagina
+
+        page = _nuevo_navegador()
 
         resumen_final = {}
         # La advertencia de umbral se muestra UNA sola vez por corrida,
@@ -504,7 +564,7 @@ def main():
                 print(f"PROCESANDO CLIENTE: {cliente.identificacion} - {cliente.nombre_para_mostrar} (consulta {obtener_contador_hoy()} hoy)")
                 print(f"{'='*70}\n")
 
-            resultados = procesar_cliente(page, cliente, sitios_a_ejecutar=sitios_a_ejecutar)
+            resultados = procesar_cliente(page, cliente, sitios_a_ejecutar=sitios_a_ejecutar, crear_pagina=_nuevo_navegador)
             resumen_final[cliente.identificacion] = resultados
 
             try:
@@ -543,7 +603,8 @@ def main():
                 print(f"  {sitio}: {estado}")
 
         input("\nPresiona ENTER para cerrar...")
-        browser.close()
+        if estado_navegador["browser"] is not None:
+            estado_navegador["browser"].close()
 
 
 if __name__ == "__main__":

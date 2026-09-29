@@ -59,7 +59,7 @@ class ScraperSRIEstadoTributario(ScraperSRI):
         self.delay_humano(1.5, 2.5)
         return self._extraer_estado_tributario(page, cliente)
 
-    def _clic_consultar_robusto(self, page: Page, max_intentos: int = 5) -> None:
+    def _clic_consultar_robusto(self, page: Page, max_intentos: int = 5, identificacion: str = "") -> None:
         """Mismo mecanismo confirmado en Consulta de Deudas Firmes."""
         for intento in range(1, max_intentos + 1):
             try:
@@ -67,11 +67,32 @@ class ScraperSRIEstadoTributario(ScraperSRI):
             except Exception:
                 pass
             page.wait_for_timeout(400)
+
+            # HIPOTESIS (2026-09-17, sin confirmar): un re-render del
+            # spinner deja el campo visualmente lleno pero con el modelo
+            # de Angular vacio. Ahi el boton queda DESHABILITADO y el
+            # clic sobre el overlay no ayuda - hay que volver a llenar.
+            if identificacion:
+                try:
+                    if page.input_value("#busquedaRucId").strip() != identificacion:
+                        print(f"    [{self.nombre_sitio}] El campo se vació tras el re-render - volviendo a llenarlo...")
+                        page.fill("#busquedaRucId", identificacion)
+                        page.wait_for_timeout(300)
+                except Exception:
+                    pass
+
             try:
                 page.locator("button:has-text('Consultar')").first.click(timeout=4000)
                 return
             except Exception:
                 if intento < max_intentos:
+                    # Diagnostico: distingue "boton deshabilitado" (modelo
+                    # vacio) de "overlay interceptando" (spinner real).
+                    try:
+                        boton_deshabilitado = page.locator("button:has-text('Consultar')").first.is_disabled()
+                    except Exception:
+                        boton_deshabilitado = None
+                    print(f"    [{self.nombre_sitio}] Clic falló (botón deshabilitado={boton_deshabilitado}) - reintentando ({intento}/{max_intentos})...")
                     try:
                         overlay = page.locator(".ui-blockui-document")
                         if overlay.count() > 0:
@@ -97,7 +118,7 @@ class ScraperSRIEstadoTributario(ScraperSRI):
             except Exception:
                 if intento < max_reintentos:
                     print(f"    [{self.nombre_sitio}] Página sin terminar de cargar - reintentando clic ({intento + 1}/{max_reintentos})...")
-                    self._clic_consultar_robusto(page)
+                    self._clic_consultar_robusto(page, identificacion=ruc_a_consultar)
                     self.delay_humano(2.0, 3.0)
                 else:
                     print(f"    [{self.nombre_sitio}] Advertencia: la página no confirmó resultado tras {max_reintentos} reintentos.")

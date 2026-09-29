@@ -41,7 +41,7 @@ def _clasificar_identificacion(identificacion: str) -> str:
     return "desconocido"
 
 
-def resolver_representante_legal(page: Page, scraper_sri: ScraperSRI, cliente_juridica: Cliente, prefijo_subcarpeta: str = "representante_legal") -> dict:
+def resolver_representante_legal(page: Page, scraper_sri: ScraperSRI, cliente_juridica: Cliente, prefijo_subcarpeta: str = "representante_legal", datos_sri_nivel1: dict = None) -> dict:
     """
     Devuelve un diccionario con:
     - persona_encontrada: bool
@@ -75,7 +75,13 @@ def resolver_representante_legal(page: Page, scraper_sri: ScraperSRI, cliente_ju
             identificacion_evidencia=(cliente_juridica.identificacion if nivel > 1 else ""),
             subcarpeta_evidencia=(f"{prefijo_subcarpeta}_{ruc_actual}" if nivel > 1 else ""),
         )
-        datos = scraper_sri.consultar_ruc(page, cliente_temporal)
+        # El nivel 1 consulta el MISMO RUC que el paso "sri_ruc" ya
+        # consulto, con la misma carpeta de evidencia (screenshot
+        # duplicado). Si quien llama ya tiene esos datos, se reutilizan.
+        if nivel == 1 and datos_sri_nivel1 is not None:
+            datos = datos_sri_nivel1
+        else:
+            datos = scraper_sri.consultar_ruc(page, cliente_temporal)
 
         id_representante = datos.get("representante_legal_identificacion", "").strip()
         nombre_representante = datos.get("representante_legal_nombre", "")

@@ -42,7 +42,21 @@ def capturar_evidencia(
         page.evaluate("window.scrollTo(0, 0)")
         page.wait_for_timeout(300)
 
-    page.screenshot(path=ruta_archivo, full_page=pagina_completa)
+    # Antes: page.screenshot(..., full_page=True) con el timeout por
+    # defecto de 30s. Era el error MAS FRECUENTE de la corrida del
+    # 2026-09-16 (19 de 62 fallos): el sitio respondia bien pero la
+    # captura de pagina completa se pasaba de 30s en paginas largas
+    # (Funcion Judicial, Fiscalia), y el resultado ya obtenido se perdia.
+    # Ahora: timeout mas holgado y, si aun asi falla, se cae a captura
+    # de solo el viewport - evidencia parcial es mucho mejor que
+    # ninguna y que perder toda la consulta.
+    try:
+        page.screenshot(path=ruta_archivo, full_page=pagina_completa, timeout=60000)
+    except Exception as e:
+        if not pagina_completa:
+            raise  # ya era viewport - no hay plan B
+        print(f"    [evidencia] Captura de página completa falló ({type(e).__name__}); usando solo viewport.")
+        page.screenshot(path=ruta_archivo, full_page=False, timeout=30000)
 
     timestamp_legible = ahora.strftime("%Y-%m-%d %H:%M:%S")
     img = Image.open(ruta_archivo)
